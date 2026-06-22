@@ -3,6 +3,7 @@
 namespace Modules\Bookings\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Modules\Bookings\Models\Booking;
 
 class StoreBookingRequest extends FormRequest
 {
@@ -25,6 +26,20 @@ class StoreBookingRequest extends FormRequest
 
     public function authorize(): bool
     {
-        return true;
+        $user = $this->user();
+
+        if (! $user?->can('create', Booking::class)) {
+            return false;
+        }
+
+        if ($user->role === 'admin') {
+            return true;
+        }
+
+        if ($user->role === 'customer') {
+            return (int) $this->input('customer_id') === $user->id;
+        }
+
+        return (int) $this->input('vendor_id') === $user->vendorProfile?->id;
     }
 }

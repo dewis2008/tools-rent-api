@@ -3,6 +3,7 @@
 namespace Modules\Categories\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Modules\Categories\Models\Category;
 
 class StoreCategoryRequest extends FormRequest
 {
@@ -16,6 +17,6 @@ class StoreCategoryRequest extends FormRequest
 
     public function authorize(): bool
     {
-        return true;
+        return $this->user()?->can('create', Category::class) ?? false;
     }
 }

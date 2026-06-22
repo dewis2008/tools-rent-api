@@ -25,6 +25,12 @@ class UpdateBookingRequest extends FormRequest
 
     public function authorize(): bool
     {
-        return true;
+        $user = $this->user();
+
+        if (! $user?->can('update', $this->route('booking'))) {
+            return false;
+        }
+
+        return $user->role === 'admin' || ! $this->hasAny(['tool_id', 'customer_id', 'vendor_id']);
     }
 }

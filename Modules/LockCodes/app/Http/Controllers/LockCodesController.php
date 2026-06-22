@@ -13,11 +13,26 @@ class LockCodesController extends Controller
 {
     public function index(): JsonResponse
     {
-        return response()->json(LockCode::query()->with('booking')->latest()->paginate());
+        $this->authorize('viewAny', LockCode::class);
+
+        $query = LockCode::query()->with('booking')->latest();
+        $user = request()->user();
+
+        if ($user->role === 'vendor') {
+            $query->whereHas('booking', fn ($query) => $query->where('vendor_id', $user->vendorProfile?->id ?? 0));
+        }
+
+        if ($user->role === 'customer') {
+            $query->whereHas('booking', fn ($query) => $query->where('customer_id', $user->id));
+        }
+
+        return response()->json($query->paginate());
     }
 
     public function store(StoreLockCodeRequest $request): JsonResponse
     {
+        $this->authorize('create', LockCode::class);
+
         $lockCode = LockCode::create($request->validated());
 
         return response()->json($lockCode->load('booking'), Response::HTTP_CREATED);
@@ -25,11 +40,15 @@ class LockCodesController extends Controller
 
     public function show(LockCode $lockCode): JsonResponse
     {
+        $this->authorize('view', $lockCode);
+
         return response()->json($lockCode->load('booking'));
     }
 
     public function update(UpdateLockCodeRequest $request, LockCode $lockCode): JsonResponse
     {
+        $this->authorize('update', $lockCode);
+
         $lockCode->update($request->validated());
 
         return response()->json($lockCode->refresh()->load('booking'));
@@ -37,6 +56,8 @@ class LockCodesController extends Controller
 
     public function destroy(LockCode $lockCode): Response
     {
+        $this->authorize('delete', $lockCode);
+
         $lockCode->delete();
 
         return response()->noContent();

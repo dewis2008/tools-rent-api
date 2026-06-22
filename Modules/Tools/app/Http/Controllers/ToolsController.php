@@ -13,11 +13,15 @@ class ToolsController extends Controller
 {
     public function index(): JsonResponse
     {
+        $this->authorize('viewAny', Tool::class);
+
         return response()->json(Tool::query()->with(['vendor', 'category'])->latest()->paginate());
     }
 
     public function store(StoreToolRequest $request): JsonResponse
     {
+        $this->authorize('create', Tool::class);
+
         $tool = Tool::create($request->validated());
 
         return response()->json($tool->load(['vendor', 'category']), Response::HTTP_CREATED);
@@ -25,11 +29,15 @@ class ToolsController extends Controller
 
     public function show(Tool $tool): JsonResponse
     {
+        $this->authorize('view', $tool);
+
         return response()->json($tool->load(['vendor', 'category', 'images']));
     }
 
     public function update(UpdateToolRequest $request, Tool $tool): JsonResponse
     {
+        $this->authorize('update', $tool);
+
         $tool->update($request->validated());
 
         return response()->json($tool->refresh()->load(['vendor', 'category', 'images']));
@@ -37,6 +45,8 @@ class ToolsController extends Controller
 
     public function destroy(Tool $tool): Response
     {
+        $this->authorize('delete', $tool);
+
         $tool->delete();
 
         return response()->noContent();
