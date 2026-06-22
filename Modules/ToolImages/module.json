@@ -1,0 +1,11 @@
+{
+    "name": "ToolImages",
+    "alias": "toolimages",
+    "description": "",
+    "keywords": [],
+    "priority": 0,
+    "providers": [
+        "Modules\\ToolImages\\Providers\\ToolImagesServiceProvider"
+    ],
+    "files": []
+}

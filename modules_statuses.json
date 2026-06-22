@@ -1,0 +1,10 @@
+{
+    "Vendors": true,
+    "Tools": true,
+    "Categories": true,
+    "Bookings": true,
+    "Payments": true,
+    "LockCodes": true,
+    "Users": true,
+    "ToolImages": true
+}

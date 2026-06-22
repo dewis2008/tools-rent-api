@@ -1,0 +1,11 @@
+{
+    "name": "LockCodes",
+    "alias": "lockcodes",
+    "description": "",
+    "keywords": [],
+    "priority": 0,
+    "providers": [
+        "Modules\\LockCodes\\Providers\\LockCodesServiceProvider"
+    ],
+    "files": []
+}
