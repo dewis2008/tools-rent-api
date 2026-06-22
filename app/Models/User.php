@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Laravel\Sanctum\HasApiTokens;
 use Modules\Bookings\Models\Booking;
 use Modules\Payments\Models\Payment;
 use Modules\Vendors\Models\VendorProfile;
@@ -20,6 +21,8 @@ use Modules\Vendors\Models\VendorProfile;
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {
+    use HasApiTokens;
+
     /** @use HasFactory<UserFactory> */
     use HasFactory;
 
