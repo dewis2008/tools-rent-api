@@ -30,7 +30,13 @@ class UsersController extends Controller
 
     public function update(UpdateUserRequest $request, User $user): JsonResponse
     {
-        $user->update($request->validated());
+        $validated = $request->validated();
+
+        $user->update($validated);
+
+        if (array_key_exists('status', $validated) && $validated['status'] !== 'active') {
+            $user->tokens()->delete();
+        }
 
         return response()->json($user->refresh());
     }
