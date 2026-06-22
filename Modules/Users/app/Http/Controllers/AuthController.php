@@ -45,7 +45,7 @@ class AuthController extends Controller
             ]);
         }
 
-        if ($user->status === 'blocked') {
+        if ($user->status !== 'active') {
             throw ValidationException::withMessages([
                 'email' => __('auth.failed'),
             ]);
