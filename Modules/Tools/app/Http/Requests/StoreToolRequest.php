@@ -30,7 +30,11 @@ class StoreToolRequest extends FormRequest
             return false;
         }
 
-        return $user->role === 'admin'
-            || (int) $this->input('vendor_id') === $user->vendorProfile?->id;
+        if ($user->role === 'admin') {
+            return true;
+        }
+
+        return (int) $this->input('vendor_id') === $user->vendorProfile?->id
+            && ! $this->has('status');
     }
 }

@@ -27,6 +27,11 @@ class StoreVendorRequest extends FormRequest
             return false;
         }
 
-        return $user->role === 'admin' || (int) $this->input('user_id') === $user->id;
+        if ($user->role === 'admin') {
+            return true;
+        }
+
+        return (int) $this->input('user_id') === $user->id
+            && ! $this->hasAny(['verification_status', 'rating']);
     }
 }

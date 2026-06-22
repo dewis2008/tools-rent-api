@@ -65,6 +65,49 @@ class AuthorizationTest extends TestCase
             ->assertForbidden();
     }
 
+    public function test_vendor_cannot_set_tool_status_on_create(): void
+    {
+        $vendor = User::factory()->create(['role' => 'vendor']);
+        $vendorProfile = $this->createVendorProfile($vendor);
+        $category = Category::create(['name' => 'Drills', 'slug' => 'drills']);
+
+        $response = $this
+            ->withToken($vendor->createToken('test-client')->plainTextToken)
+            ->postJson('/api/v1/tools', [
+                ...$this->toolPayload($vendorProfile, $category),
+                'status' => 'active',
+            ]);
+
+        $response->assertForbidden();
+
+        $this->assertDatabaseMissing('tools', [
+            'vendor_id' => $vendorProfile->id,
+            'status' => 'active',
+        ]);
+    }
+
+    public function test_vendor_cannot_set_privileged_vendor_profile_fields_on_create(): void
+    {
+        $vendor = User::factory()->create(['role' => 'vendor']);
+
+        $response = $this
+            ->withToken($vendor->createToken('test-client')->plainTextToken)
+            ->postJson('/api/v1/vendors', [
+                'user_id' => $vendor->id,
+                'business_name' => 'Vendor Rentals',
+                'verification_status' => 'approved',
+                'rating' => 5,
+            ]);
+
+        $response->assertForbidden();
+
+        $this->assertDatabaseMissing('vendor_profiles', [
+            'user_id' => $vendor->id,
+            'verification_status' => 'approved',
+            'rating' => 5,
+        ]);
+    }
+
     public function test_vendor_cannot_update_another_vendors_tool(): void
     {
         $vendor = User::factory()->create(['role' => 'vendor']);
