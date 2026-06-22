@@ -3,6 +3,7 @@
 namespace Modules\ToolImages\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Modules\Tools\Models\Tool;
 
 class UpdateToolImageRequest extends FormRequest
 {
@@ -18,6 +19,18 @@ class UpdateToolImageRequest extends FormRequest
 
     public function authorize(): bool
     {
-        return true;
+        $user = $this->user();
+
+        if (! $user?->can('update', $this->route('toolImage'))) {
+            return false;
+        }
+
+        if ($user->role === 'admin' || ! $this->has('tool_id')) {
+            return true;
+        }
+
+        $tool = Tool::query()->find($this->input('tool_id'));
+
+        return $tool && $user->vendorProfile()->whereKey($tool->vendor_id)->exists();
     }
 }

@@ -23,6 +23,12 @@ class UpdateToolRequest extends FormRequest
 
     public function authorize(): bool
     {
-        return true;
+        $user = $this->user();
+
+        if (! $user?->can('update', $this->route('tool'))) {
+            return false;
+        }
+
+        return $user->role === 'admin' || ! $this->hasAny(['vendor_id', 'status']);
     }
 }

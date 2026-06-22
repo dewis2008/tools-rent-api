@@ -4,6 +4,7 @@ namespace Modules\LockCodes\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Modules\Bookings\Models\Booking;
 
 class UpdateLockCodeRequest extends FormRequest
 {
@@ -26,6 +27,18 @@ class UpdateLockCodeRequest extends FormRequest
 
     public function authorize(): bool
     {
-        return true;
+        $user = $this->user();
+
+        if (! $user?->can('update', $this->route('lockCode'))) {
+            return false;
+        }
+
+        if ($user->role === 'admin' || ! $this->has('booking_id')) {
+            return true;
+        }
+
+        $booking = Booking::query()->find($this->input('booking_id'));
+
+        return $booking && $user->vendorProfile()->whereKey($booking->vendor_id)->exists();
     }
 }

@@ -3,6 +3,7 @@
 namespace Modules\Vendors\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Modules\Vendors\Models\VendorProfile;
 
 class StoreVendorRequest extends FormRequest
 {
@@ -20,6 +21,17 @@ class StoreVendorRequest extends FormRequest
 
     public function authorize(): bool
     {
-        return true;
+        $user = $this->user();
+
+        if (! $user?->can('create', VendorProfile::class)) {
+            return false;
+        }
+
+        if ($user->role === 'admin') {
+            return true;
+        }
+
+        return (int) $this->input('user_id') === $user->id
+            && ! $this->hasAny(['verification_status', 'rating']);
     }
 }

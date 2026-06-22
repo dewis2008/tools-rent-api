@@ -3,6 +3,7 @@
 namespace Modules\Payments\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Modules\Payments\Models\Payment;
 
 class StorePaymentRequest extends FormRequest
 {
@@ -22,6 +23,6 @@ class StorePaymentRequest extends FormRequest
 
     public function authorize(): bool
     {
-        return true;
+        return $this->user()?->can('create', Payment::class) ?? false;
     }
 }

@@ -3,6 +3,7 @@
 namespace Modules\Tools\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Modules\Tools\Models\Tool;
 
 class StoreToolRequest extends FormRequest
 {
@@ -23,6 +24,17 @@ class StoreToolRequest extends FormRequest
 
     public function authorize(): bool
     {
-        return true;
+        $user = $this->user();
+
+        if (! $user?->can('create', Tool::class)) {
+            return false;
+        }
+
+        if ($user->role === 'admin') {
+            return true;
+        }
+
+        return (int) $this->input('vendor_id') === $user->vendorProfile?->id
+            && ! $this->has('status');
     }
 }
