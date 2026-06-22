@@ -160,6 +160,37 @@ class AuthorizationTest extends TestCase
             ->assertJsonPath('data.0.id', $booking->id);
     }
 
+    public function test_customer_cannot_create_booking_with_mismatched_tool_vendor(): void
+    {
+        $customer = User::factory()->create(['role' => 'customer']);
+        $vendorProfile = $this->createVendorProfile(User::factory()->create(['role' => 'vendor']));
+        $otherVendorProfile = $this->createVendorProfile(User::factory()->create(['role' => 'vendor']));
+        $category = Category::create(['name' => 'Drills', 'slug' => 'drills']);
+        $tool = $this->createTool($vendorProfile, $category);
+
+        $response = $this
+            ->withToken($customer->createToken('test-client')->plainTextToken)
+            ->postJson('/api/v1/bookings', [
+                'tool_id' => $tool->id,
+                'customer_id' => $customer->id,
+                'vendor_id' => $otherVendorProfile->id,
+                'start_at' => now()->addDay()->toDateTimeString(),
+                'end_at' => now()->addDays(2)->toDateTimeString(),
+                'rental_price' => 20,
+                'total_amount' => 25,
+            ]);
+
+        $response
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('tool_id');
+
+        $this->assertDatabaseMissing('bookings', [
+            'tool_id' => $tool->id,
+            'customer_id' => $customer->id,
+            'vendor_id' => $otherVendorProfile->id,
+        ]);
+    }
+
     public function test_non_admin_cannot_create_payment_records(): void
     {
         $customer = User::factory()->create(['role' => 'customer']);

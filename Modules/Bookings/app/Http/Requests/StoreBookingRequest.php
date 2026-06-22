@@ -3,6 +3,7 @@
 namespace Modules\Bookings\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 use Modules\Bookings\Models\Booking;
 
 class StoreBookingRequest extends FormRequest
@@ -10,7 +11,11 @@ class StoreBookingRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'tool_id' => ['required', 'integer', 'exists:tools,id'],
+            'tool_id' => [
+                'required',
+                'integer',
+                Rule::exists('tools', 'id')->where('vendor_id', $this->integer('vendor_id')),
+            ],
             'customer_id' => ['required', 'integer', 'exists:users,id'],
             'vendor_id' => ['required', 'integer', 'exists:vendor_profiles,id'],
             'start_at' => ['required', 'date'],
