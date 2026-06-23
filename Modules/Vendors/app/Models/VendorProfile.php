@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Modules\Bookings\Models\Booking;
+use Modules\ToolImages\Services\ToolImageService;
 use Modules\Tools\Models\Tool;
 
 class VendorProfile extends Model
@@ -25,6 +26,13 @@ class VendorProfile extends Model
         return [
             'rating' => 'decimal:1',
         ];
+    }
+
+    protected static function booted(): void
+    {
+        static::deleting(function (VendorProfile $vendorProfile): void {
+            app(ToolImageService::class)->deleteFilesForVendorProfile($vendorProfile);
+        });
     }
 
     public function user(): BelongsTo

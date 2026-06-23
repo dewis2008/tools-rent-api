@@ -11,7 +11,8 @@ class UpdateToolImageRequest extends FormRequest
     {
         return [
             'tool_id' => ['sometimes', 'required', 'integer', 'exists:tools,id'],
-            'image_path' => ['sometimes', 'required', 'string', 'max:255'],
+            'image' => ['sometimes', 'required', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
+            'image_path' => ['prohibited'],
             'is_main' => ['sometimes', 'required', 'boolean'],
             'sort_order' => ['sometimes', 'required', 'integer', 'min:0'],
         ];
