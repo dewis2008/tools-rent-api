@@ -3,12 +3,16 @@
 namespace Modules\Payments\Models;
 
 use App\Models\User;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Modules\Bookings\Models\Booking;
+use Modules\Payments\Database\Factories\PaymentFactory;
 
 class Payment extends Model
 {
+    use HasFactory;
+
     protected $fillable = [
         'booking_id',
         'customer_id',
@@ -26,6 +30,11 @@ class Payment extends Model
             'amount' => 'decimal:2',
             'paid_at' => 'datetime',
         ];
+    }
+
+    protected static function newFactory(): PaymentFactory
+    {
+        return PaymentFactory::new();
     }
 
     public function booking(): BelongsTo
