@@ -23,7 +23,7 @@ class BookingPolicy
 
     public function create(User $user): bool
     {
-        return in_array($user->role, ['vendor', 'customer'], true);
+        return $user->role === 'customer';
     }
 
     public function update(User $user, Booking $booking): bool

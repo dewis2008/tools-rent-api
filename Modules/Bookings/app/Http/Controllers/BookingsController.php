@@ -8,6 +8,7 @@ use Illuminate\Http\Response;
 use Modules\Bookings\Http\Requests\StoreBookingRequest;
 use Modules\Bookings\Http\Requests\UpdateBookingRequest;
 use Modules\Bookings\Models\Booking;
+use Modules\Bookings\Services\BookingService;
 
 class BookingsController extends Controller
 {
@@ -29,11 +30,11 @@ class BookingsController extends Controller
         return response()->json($query->paginate());
     }
 
-    public function store(StoreBookingRequest $request): JsonResponse
+    public function store(StoreBookingRequest $request, BookingService $bookings): JsonResponse
     {
         $this->authorize('create', Booking::class);
 
-        $booking = Booking::create($request->validated());
+        $booking = $bookings->create($request->validated(), $request->user());
 
         return response()->json($booking->load(['tool', 'customer', 'vendor']), Response::HTTP_CREATED);
     }
@@ -45,11 +46,11 @@ class BookingsController extends Controller
         return response()->json($booking->load(['tool', 'customer', 'vendor', 'payment', 'lockCode']));
     }
 
-    public function update(UpdateBookingRequest $request, Booking $booking): JsonResponse
+    public function update(UpdateBookingRequest $request, Booking $booking, BookingService $bookings): JsonResponse
     {
         $this->authorize('update', $booking);
 
-        $booking->update($request->validated());
+        $booking = $bookings->transition($booking, $request->validated('status'), $request->user());
 
         return response()->json($booking->refresh()->load(['tool', 'customer', 'vendor', 'payment', 'lockCode']));
     }

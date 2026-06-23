@@ -8,6 +8,7 @@ use Illuminate\Http\Response;
 use Modules\Payments\Http\Requests\StorePaymentRequest;
 use Modules\Payments\Http\Requests\UpdatePaymentRequest;
 use Modules\Payments\Models\Payment;
+use Modules\Payments\Services\PaymentService;
 
 class PaymentsController extends Controller
 {
@@ -29,11 +30,11 @@ class PaymentsController extends Controller
         return response()->json($query->paginate());
     }
 
-    public function store(StorePaymentRequest $request): JsonResponse
+    public function store(StorePaymentRequest $request, PaymentService $payments): JsonResponse
     {
         $this->authorize('create', Payment::class);
 
-        $payment = Payment::create($request->validated());
+        $payment = $payments->create($request->validated(), $request->user());
 
         return response()->json($payment->load(['booking', 'customer']), Response::HTTP_CREATED);
     }
@@ -45,11 +46,11 @@ class PaymentsController extends Controller
         return response()->json($payment->load(['booking', 'customer']));
     }
 
-    public function update(UpdatePaymentRequest $request, Payment $payment): JsonResponse
+    public function update(UpdatePaymentRequest $request, Payment $payment, PaymentService $payments): JsonResponse
     {
         $this->authorize('update', $payment);
 
-        $payment->update($request->validated());
+        $payment = $payments->transition($payment, $request->validated());
 
         return response()->json($payment->refresh()->load(['booking', 'customer']));
     }
