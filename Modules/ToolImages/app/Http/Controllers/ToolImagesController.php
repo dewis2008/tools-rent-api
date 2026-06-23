@@ -8,6 +8,7 @@ use Illuminate\Http\Response;
 use Modules\ToolImages\Http\Requests\StoreToolImageRequest;
 use Modules\ToolImages\Http\Requests\UpdateToolImageRequest;
 use Modules\ToolImages\Models\ToolImage;
+use Modules\ToolImages\Services\ToolImageService;
 
 class ToolImagesController extends Controller
 {
@@ -18,11 +19,11 @@ class ToolImagesController extends Controller
         return response()->json(ToolImage::query()->with('tool')->orderBy('sort_order')->paginate());
     }
 
-    public function store(StoreToolImageRequest $request): JsonResponse
+    public function store(StoreToolImageRequest $request, ToolImageService $toolImages): JsonResponse
     {
         $this->authorize('create', ToolImage::class);
 
-        $toolImage = ToolImage::create($request->validated());
+        $toolImage = $toolImages->store($request->validated());
 
         return response()->json($toolImage->load('tool'), Response::HTTP_CREATED);
     }
@@ -34,20 +35,20 @@ class ToolImagesController extends Controller
         return response()->json($toolImage->load('tool'));
     }
 
-    public function update(UpdateToolImageRequest $request, ToolImage $toolImage): JsonResponse
+    public function update(UpdateToolImageRequest $request, ToolImage $toolImage, ToolImageService $toolImages): JsonResponse
     {
         $this->authorize('update', $toolImage);
 
-        $toolImage->update($request->validated());
+        $toolImage = $toolImages->update($toolImage, $request->validated());
 
         return response()->json($toolImage->refresh()->load('tool'));
     }
 
-    public function destroy(ToolImage $toolImage): Response
+    public function destroy(ToolImage $toolImage, ToolImageService $toolImages): Response
     {
         $this->authorize('delete', $toolImage);
 
-        $toolImage->delete();
+        $toolImages->delete($toolImage);
 
         return response()->noContent();
     }

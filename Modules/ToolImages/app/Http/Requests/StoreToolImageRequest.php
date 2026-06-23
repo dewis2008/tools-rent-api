@@ -12,7 +12,8 @@ class StoreToolImageRequest extends FormRequest
     {
         return [
             'tool_id' => ['required', 'integer', 'exists:tools,id'],
-            'image_path' => ['required', 'string', 'max:255'],
+            'image' => ['required', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
+            'image_path' => ['prohibited'],
             'is_main' => ['sometimes', 'required', 'boolean'],
             'sort_order' => ['sometimes', 'required', 'integer', 'min:0'],
         ];
