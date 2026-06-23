@@ -2,10 +2,14 @@
 
 namespace Modules\ToolImages\Services;
 
+use App\Models\User;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Modules\ToolImages\Models\ToolImage;
+use Modules\Tools\Models\Tool;
+use Modules\Vendors\Models\VendorProfile;
 use RuntimeException;
 use Throwable;
 
@@ -89,6 +93,29 @@ class ToolImageService
         Storage::disk('public')->delete($path);
     }
 
+    public function deleteFilesForTool(Tool $tool): void
+    {
+        $this->deleteImageFiles(
+            ToolImage::query()->where('tool_id', $tool->id),
+        );
+    }
+
+    public function deleteFilesForVendorProfile(VendorProfile $vendorProfile): void
+    {
+        $this->deleteImageFiles(
+            ToolImage::query()
+                ->whereHas('tool', fn (Builder $query) => $query->where('vendor_id', $vendorProfile->id)),
+        );
+    }
+
+    public function deleteFilesForUser(User $user): void
+    {
+        $this->deleteImageFiles(
+            ToolImage::query()
+                ->whereHas('tool.vendor', fn (Builder $query) => $query->where('user_id', $user->id)),
+        );
+    }
+
     private function storeImage(UploadedFile $image, int $toolId): string
     {
         $path = $image->store("tool-images/{$toolId}", 'public');
@@ -106,5 +133,14 @@ class ToolImageService
             ->where('tool_id', $toolId)
             ->when($exceptId, fn ($query) => $query->whereKeyNot($exceptId))
             ->update(['is_main' => false]);
+    }
+
+    private function deleteImageFiles(Builder $query): void
+    {
+        $query
+            ->pluck('image_path')
+            ->filter()
+            ->unique()
+            ->each(fn (string $path) => Storage::disk('public')->delete($path));
     }
 }

@@ -5,10 +5,10 @@ namespace Modules\Tools\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Support\Facades\Storage;
 use Modules\Bookings\Models\Booking;
 use Modules\Categories\Models\Category;
 use Modules\ToolImages\Models\ToolImage;
+use Modules\ToolImages\Services\ToolImageService;
 use Modules\Vendors\Models\VendorProfile;
 
 class Tool extends Model
@@ -36,10 +36,7 @@ class Tool extends Model
     protected static function booted(): void
     {
         static::deleting(function (Tool $tool): void {
-            $tool->images()
-                ->pluck('image_path')
-                ->filter()
-                ->each(fn (string $path) => Storage::disk('public')->delete($path));
+            app(ToolImageService::class)->deleteFilesForTool($tool);
         });
     }
 

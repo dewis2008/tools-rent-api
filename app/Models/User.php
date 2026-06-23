@@ -15,6 +15,7 @@ use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 use Modules\Bookings\Models\Booking;
 use Modules\Payments\Models\Payment;
+use Modules\ToolImages\Services\ToolImageService;
 use Modules\Vendors\Models\VendorProfile;
 
 #[Fillable(['name', 'email', 'password', 'phone', 'role', 'status'])]
@@ -27,6 +28,13 @@ class User extends Authenticatable
     use HasFactory;
 
     use Notifiable;
+
+    protected static function booted(): void
+    {
+        static::deleting(function (User $user): void {
+            app(ToolImageService::class)->deleteFilesForUser($user);
+        });
+    }
 
     public function vendorProfile(): HasOne
     {

@@ -152,6 +152,57 @@ class ToolImageUploadTest extends TestCase
         Storage::disk('public')->assertMissing($path);
     }
 
+    public function test_deleting_vendor_removes_stored_image_files(): void
+    {
+        Storage::fake('public');
+
+        $vendor = User::factory()->create(['role' => 'vendor']);
+        $tool = $this->createToolForVendor($vendor);
+        $path = "tool-images/{$tool->id}/vendor-delete.jpg";
+
+        Storage::disk('public')->put($path, 'stored image');
+
+        $toolImage = ToolImage::create([
+            'tool_id' => $tool->id,
+            'image_path' => $path,
+        ]);
+
+        $this
+            ->withHeaders(['Accept' => 'application/json'])
+            ->withToken($vendor->createToken('test-client')->plainTextToken)
+            ->delete("/api/v1/vendors/{$vendor->vendorProfile->id}")
+            ->assertNoContent();
+
+        $this->assertDatabaseMissing('tool_images', ['id' => $toolImage->id]);
+        Storage::disk('public')->assertMissing($path);
+    }
+
+    public function test_deleting_vendor_user_removes_stored_image_files(): void
+    {
+        Storage::fake('public');
+
+        $admin = User::factory()->create(['role' => 'admin']);
+        $vendor = User::factory()->create(['role' => 'vendor']);
+        $tool = $this->createToolForVendor($vendor);
+        $path = "tool-images/{$tool->id}/user-delete.jpg";
+
+        Storage::disk('public')->put($path, 'stored image');
+
+        $toolImage = ToolImage::create([
+            'tool_id' => $tool->id,
+            'image_path' => $path,
+        ]);
+
+        $this
+            ->withHeaders(['Accept' => 'application/json'])
+            ->withToken($admin->createToken('test-client')->plainTextToken)
+            ->delete("/api/v1/users/{$vendor->id}")
+            ->assertNoContent();
+
+        $this->assertDatabaseMissing('tool_images', ['id' => $toolImage->id]);
+        Storage::disk('public')->assertMissing($path);
+    }
+
     public function test_setting_main_image_clears_existing_main_image_for_tool(): void
     {
         Storage::fake('public');
