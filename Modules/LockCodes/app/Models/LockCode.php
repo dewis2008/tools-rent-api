@@ -20,9 +20,14 @@ class LockCode extends Model
         'status',
     ];
 
+    protected $hidden = [
+        'code',
+    ];
+
     protected function casts(): array
     {
         return [
+            'code' => 'encrypted',
             'valid_from' => 'datetime',
             'valid_until' => 'datetime',
         ];

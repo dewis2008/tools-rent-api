@@ -11,7 +11,7 @@ return new class extends Migration
         Schema::create('lock_codes', function (Blueprint $table) {
             $table->id();
             $table->foreignId('booking_id')->unique()->constrained()->cascadeOnDelete();
-            $table->string('code', 20);
+            $table->text('code');
             $table->dateTime('valid_from');
             $table->dateTime('valid_until');
             $table->enum('status', ['generated', 'sent', 'active', 'expired', 'revoked'])->default('generated');
