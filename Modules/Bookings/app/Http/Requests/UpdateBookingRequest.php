@@ -9,17 +9,17 @@ class UpdateBookingRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'tool_id' => ['sometimes', 'required', 'integer', 'exists:tools,id'],
-            'customer_id' => ['sometimes', 'required', 'integer', 'exists:users,id'],
-            'vendor_id' => ['sometimes', 'required', 'integer', 'exists:vendor_profiles,id'],
-            'start_at' => ['sometimes', 'required', 'date'],
-            'end_at' => ['sometimes', 'required', 'date'],
-            'status' => ['sometimes', 'required', 'in:pending,paid,active,completed,cancelled'],
-            'rental_price' => ['sometimes', 'required', 'numeric', 'min:0'],
-            'deposit_amount' => ['sometimes', 'required', 'numeric', 'min:0'],
-            'platform_fee' => ['sometimes', 'required', 'numeric', 'min:0'],
-            'vendor_amount' => ['sometimes', 'required', 'numeric', 'min:0'],
-            'total_amount' => ['sometimes', 'required', 'numeric', 'min:0'],
+            'tool_id' => ['prohibited'],
+            'customer_id' => ['prohibited'],
+            'vendor_id' => ['prohibited'],
+            'start_at' => ['prohibited'],
+            'end_at' => ['prohibited'],
+            'status' => ['required', 'in:paid,active,completed,cancelled'],
+            'rental_price' => ['prohibited'],
+            'deposit_amount' => ['prohibited'],
+            'platform_fee' => ['prohibited'],
+            'vendor_amount' => ['prohibited'],
+            'total_amount' => ['prohibited'],
         ];
     }
 
@@ -31,6 +31,6 @@ class UpdateBookingRequest extends FormRequest
             return false;
         }
 
-        return $user->role === 'admin' || ! $this->hasAny(['tool_id', 'customer_id', 'vendor_id']);
+        return true;
     }
 }

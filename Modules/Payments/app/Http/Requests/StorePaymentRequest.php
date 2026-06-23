@@ -3,6 +3,7 @@
 namespace Modules\Payments\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Modules\Bookings\Models\Booking;
 use Modules\Payments\Models\Payment;
 
 class StorePaymentRequest extends FormRequest
@@ -11,18 +12,36 @@ class StorePaymentRequest extends FormRequest
     {
         return [
             'booking_id' => ['required', 'integer', 'exists:bookings,id', 'unique:payments,booking_id'],
-            'customer_id' => ['required', 'integer', 'exists:users,id'],
+            'customer_id' => ['prohibited'],
             'provider' => ['sometimes', 'required', 'in:demo,stripe,paysera,manual'],
             'provider_payment_id' => ['nullable', 'string', 'max:255'],
-            'status' => ['sometimes', 'required', 'in:pending,paid,failed,refunded'],
-            'amount' => ['required', 'numeric', 'min:0'],
-            'currency' => ['sometimes', 'required', 'string', 'max:10'],
-            'paid_at' => ['nullable', 'date'],
+            'status' => ['prohibited'],
+            'amount' => ['prohibited'],
+            'currency' => ['prohibited'],
+            'paid_at' => ['prohibited'],
         ];
     }
 
     public function authorize(): bool
     {
-        return $this->user()?->can('create', Payment::class) ?? false;
+        $user = $this->user();
+
+        if (! $user?->can('create', Payment::class)) {
+            return false;
+        }
+
+        if ($user->role === 'admin') {
+            return true;
+        }
+
+        $bookingId = $this->input('booking_id');
+
+        if (! is_scalar($bookingId) || filter_var($bookingId, FILTER_VALIDATE_INT) === false) {
+            return true;
+        }
+
+        $booking = Booking::query()->find((int) $bookingId);
+
+        return ! $booking || $booking->customer_id === $user->id;
     }
 }

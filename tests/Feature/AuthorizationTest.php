@@ -160,7 +160,7 @@ class AuthorizationTest extends TestCase
             ->assertJsonPath('data.0.id', $booking->id);
     }
 
-    public function test_customer_cannot_create_booking_with_mismatched_tool_vendor(): void
+    public function test_customer_cannot_inject_booking_ownership_or_amounts(): void
     {
         $customer = User::factory()->create(['role' => 'customer']);
         $vendorProfile = $this->createVendorProfile(User::factory()->create(['role' => 'vendor']));
@@ -182,7 +182,7 @@ class AuthorizationTest extends TestCase
 
         $response
             ->assertUnprocessable()
-            ->assertJsonValidationErrors('tool_id');
+            ->assertJsonValidationErrors(['customer_id', 'vendor_id', 'rental_price', 'total_amount']);
 
         $this->assertDatabaseMissing('bookings', [
             'tool_id' => $tool->id,
@@ -191,7 +191,7 @@ class AuthorizationTest extends TestCase
         ]);
     }
 
-    public function test_non_admin_cannot_create_payment_records(): void
+    public function test_customer_payment_records_are_derived_from_the_booking(): void
     {
         $customer = User::factory()->create(['role' => 'customer']);
         $booking = $this->createBooking($customer);
@@ -200,11 +200,15 @@ class AuthorizationTest extends TestCase
             ->withToken($customer->createToken('test-client')->plainTextToken)
             ->postJson('/api/v1/payments', [
                 'booking_id' => $booking->id,
-                'customer_id' => $customer->id,
-                'amount' => 25,
+                'provider' => 'demo',
             ]);
 
-        $response->assertForbidden();
+        $response
+            ->assertCreated()
+            ->assertJsonPath('booking_id', $booking->id)
+            ->assertJsonPath('customer_id', $customer->id)
+            ->assertJsonPath('amount', '25.00')
+            ->assertJsonPath('status', 'pending');
     }
 
     public function test_customer_can_view_own_payment_but_not_another_customers_payment(): void
