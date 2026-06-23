@@ -2,11 +2,14 @@
 
 namespace Tests\Feature;
 
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Modules\Bookings\Database\Seeders\BookingsDatabaseSeeder;
 use Modules\Bookings\Models\Booking;
 use Modules\Categories\Models\Category;
 use Modules\LockCodes\Models\LockCode;
 use Modules\Payments\Models\Payment;
+use Modules\ToolImages\Database\Seeders\ToolImagesDatabaseSeeder;
 use Modules\ToolImages\Models\ToolImage;
 use Modules\Tools\Models\Tool;
 use Modules\Vendors\Models\VendorProfile;
@@ -75,5 +78,61 @@ class DemoDataSeederTest extends TestCase
         $this->assertSame($booking->total_amount, $payment->amount);
         $this->assertSame($booking->id, $lockCode->booking_id);
         $this->assertTrue($toolImage->is_main);
+    }
+
+    public function test_booking_seeder_reuses_existing_demo_booking_when_status_changes(): void
+    {
+        $this->seed();
+
+        $tool = Tool::query()->where('title', 'Cordless Hammer Drill')->firstOrFail();
+        $customer = User::query()->where('email', 'customer@tools-rent.test')->firstOrFail();
+        $booking = Booking::query()
+            ->where('tool_id', $tool->id)
+            ->where('customer_id', $customer->id)
+            ->firstOrFail();
+
+        $booking->update(['status' => 'paid']);
+
+        $this->seed(BookingsDatabaseSeeder::class);
+
+        $this->assertSame(1, Booking::query()
+            ->where('tool_id', $tool->id)
+            ->where('customer_id', $customer->id)
+            ->count());
+        $this->assertDatabaseHas('bookings', [
+            'id' => $booking->id,
+            'status' => 'pending',
+        ]);
+    }
+
+    public function test_tool_image_seeder_only_updates_demo_tools(): void
+    {
+        $this->seed();
+
+        $tool = Tool::factory()->create([
+            'title' => 'Non Demo Drill',
+        ]);
+        $toolImage = ToolImage::factory()->main()->create([
+            'tool_id' => $tool->id,
+            'image_path' => 'uploads/tool-images/non-demo.jpg',
+            'sort_order' => 7,
+        ]);
+        $demoTool = Tool::query()->where('title', 'Cordless Hammer Drill')->firstOrFail();
+
+        ToolImage::factory()->main()->create([
+            'tool_id' => $demoTool->id,
+            'sort_order' => 7,
+        ]);
+
+        $this->seed(ToolImagesDatabaseSeeder::class);
+
+        $this->assertSame(1, $tool->images()->count());
+        $this->assertDatabaseHas('tool_images', [
+            'id' => $toolImage->id,
+            'image_path' => 'uploads/tool-images/non-demo.jpg',
+            'is_main' => true,
+            'sort_order' => 7,
+        ]);
+        $this->assertSame(1, $demoTool->images()->where('is_main', true)->count());
     }
 }

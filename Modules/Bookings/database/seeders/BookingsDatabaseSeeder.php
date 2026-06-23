@@ -70,12 +70,12 @@ class BookingsDatabaseSeeder extends Seeder
                 [
                     'tool_id' => $tool->id,
                     'customer_id' => $customer->id,
-                    'status' => $booking['status'],
                 ],
                 [
                     'vendor_id' => $tool->vendor_id,
                     'start_at' => $booking['start_at'],
                     'end_at' => $booking['end_at'],
+                    'status' => $booking['status'],
                     ...$amounts,
                 ],
             );
