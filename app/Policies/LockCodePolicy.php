@@ -21,6 +21,26 @@ class LockCodePolicy
             || $this->ownsVendorProfile($user, $lockCode->booking?->vendor_id);
     }
 
+    public function reveal(User $user, LockCode $lockCode): bool
+    {
+        if ($this->ownsVendorProfile($user, $lockCode->booking?->vendor_id)) {
+            return true;
+        }
+
+        if ($lockCode->booking?->customer_id !== $user->id) {
+            return false;
+        }
+
+        if ($lockCode->status !== 'active') {
+            return false;
+        }
+
+        $now = now();
+
+        return $lockCode->valid_from->lte($now)
+            && $lockCode->valid_until->gte($now);
+    }
+
     public function create(User $user): bool
     {
         return $user->role === 'vendor' && $user->vendorProfile()->exists();
