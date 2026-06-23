@@ -108,6 +108,69 @@ class AuthorizationTest extends TestCase
         ]);
     }
 
+    public function test_customer_cannot_view_vendor_profiles(): void
+    {
+        $customer = User::factory()->create(['role' => 'customer']);
+        $vendorProfile = $this->createVendorProfile(User::factory()->create(['role' => 'vendor']));
+        $token = $customer->createToken('test-client')->plainTextToken;
+
+        $this
+            ->withToken($token)
+            ->getJson('/api/v1/vendors')
+            ->assertForbidden();
+
+        $this
+            ->withToken($token)
+            ->getJson("/api/v1/vendors/{$vendorProfile->id}")
+            ->assertForbidden();
+    }
+
+    public function test_vendor_profile_index_is_scoped_to_owned_profile_without_user_data(): void
+    {
+        $vendor = User::factory()->create(['role' => 'vendor']);
+        $vendorProfile = $this->createVendorProfile($vendor);
+
+        $this->createVendorProfile(User::factory()->create(['role' => 'vendor']));
+
+        $response = $this
+            ->withToken($vendor->createToken('test-client')->plainTextToken)
+            ->getJson('/api/v1/vendors');
+
+        $response
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $vendorProfile->id);
+
+        $this->assertArrayNotHasKey('user', $response->json('data.0'));
+    }
+
+    public function test_vendor_can_view_own_vendor_profile_without_user_data(): void
+    {
+        $vendor = User::factory()->create(['role' => 'vendor']);
+        $vendorProfile = $this->createVendorProfile($vendor);
+
+        $response = $this
+            ->withToken($vendor->createToken('test-client')->plainTextToken)
+            ->getJson("/api/v1/vendors/{$vendorProfile->id}");
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('id', $vendorProfile->id);
+
+        $this->assertArrayNotHasKey('user', $response->json());
+    }
+
+    public function test_vendor_cannot_view_another_vendor_profile(): void
+    {
+        $vendor = User::factory()->create(['role' => 'vendor']);
+        $otherVendorProfile = $this->createVendorProfile(User::factory()->create(['role' => 'vendor']));
+
+        $this
+            ->withToken($vendor->createToken('test-client')->plainTextToken)
+            ->getJson("/api/v1/vendors/{$otherVendorProfile->id}")
+            ->assertForbidden();
+    }
+
     public function test_vendor_cannot_update_another_vendors_tool(): void
     {
         $vendor = User::factory()->create(['role' => 'vendor']);
