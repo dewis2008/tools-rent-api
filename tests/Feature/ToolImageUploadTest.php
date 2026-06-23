@@ -127,6 +127,31 @@ class ToolImageUploadTest extends TestCase
         Storage::disk('public')->assertMissing($path);
     }
 
+    public function test_deleting_tool_removes_stored_image_files(): void
+    {
+        Storage::fake('public');
+
+        $vendor = User::factory()->create(['role' => 'vendor']);
+        $tool = $this->createToolForVendor($vendor);
+        $path = "tool-images/{$tool->id}/tool-delete.jpg";
+
+        Storage::disk('public')->put($path, 'stored image');
+
+        $toolImage = ToolImage::create([
+            'tool_id' => $tool->id,
+            'image_path' => $path,
+        ]);
+
+        $this
+            ->withHeaders(['Accept' => 'application/json'])
+            ->withToken($vendor->createToken('test-client')->plainTextToken)
+            ->delete("/api/v1/tools/{$tool->id}")
+            ->assertNoContent();
+
+        $this->assertDatabaseMissing('tool_images', ['id' => $toolImage->id]);
+        Storage::disk('public')->assertMissing($path);
+    }
+
     public function test_setting_main_image_clears_existing_main_image_for_tool(): void
     {
         Storage::fake('public');
@@ -156,16 +181,51 @@ class ToolImageUploadTest extends TestCase
         $this->assertTrue(ToolImage::query()->whereKey($response->json('id'))->firstOrFail()->is_main);
     }
 
-    private function createToolForVendor(User $vendor): Tool
+    public function test_moving_main_image_clears_existing_main_image_for_target_tool(): void
     {
-        $vendorProfile = VendorProfile::create([
-            'user_id' => $vendor->id,
-            'business_name' => "{$vendor->name} Rentals",
+        Storage::fake('public');
+
+        $vendor = User::factory()->create(['role' => 'vendor']);
+        $sourceTool = $this->createToolForVendor($vendor);
+        $targetTool = $this->createToolForVendor($vendor, slug: 'saws');
+        $movingMain = ToolImage::create([
+            'tool_id' => $sourceTool->id,
+            'image_path' => "tool-images/{$sourceTool->id}/moving-main.jpg",
+            'is_main' => true,
         ]);
-        $category = Category::create([
-            'name' => 'Drills',
-            'slug' => 'drills',
+        $targetMain = ToolImage::create([
+            'tool_id' => $targetTool->id,
+            'image_path' => "tool-images/{$targetTool->id}/target-main.jpg",
+            'is_main' => true,
         ]);
+
+        $response = $this
+            ->withHeaders(['Accept' => 'application/json'])
+            ->withToken($vendor->createToken('test-client')->plainTextToken)
+            ->patch("/api/v1/tool-images/{$movingMain->id}", [
+                'tool_id' => $targetTool->id,
+            ]);
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('tool_id', $targetTool->id)
+            ->assertJsonPath('is_main', true);
+
+        $this->assertFalse($targetMain->refresh()->is_main);
+        $this->assertTrue($movingMain->refresh()->is_main);
+        $this->assertSame($targetTool->id, $movingMain->tool_id);
+    }
+
+    private function createToolForVendor(User $vendor, string $slug = 'drills'): Tool
+    {
+        $vendorProfile = VendorProfile::firstOrCreate(
+            ['user_id' => $vendor->id],
+            ['business_name' => "{$vendor->name} Rentals"],
+        );
+        $category = Category::firstOrCreate(
+            ['slug' => $slug],
+            ['name' => ucfirst($slug)],
+        );
 
         return Tool::create([
             'vendor_id' => $vendorProfile->id,

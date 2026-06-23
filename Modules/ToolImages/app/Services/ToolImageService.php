@@ -43,13 +43,16 @@ class ToolImageService
 
         $toolId = (int) ($attributes['tool_id'] ?? $toolImage->tool_id);
         $oldPath = $toolImage->image_path;
+        $shouldBeMain = array_key_exists('is_main', $attributes)
+            ? (bool) $attributes['is_main']
+            : $toolImage->is_main;
         $newPath = $image instanceof UploadedFile
             ? $this->storeImage($image, $toolId)
             : null;
 
         try {
-            $toolImage = DB::transaction(function () use ($toolImage, $attributes, $toolId, $newPath): ToolImage {
-                if ($attributes['is_main'] ?? false) {
+            $toolImage = DB::transaction(function () use ($toolImage, $attributes, $toolId, $newPath, $shouldBeMain): ToolImage {
+                if ($shouldBeMain) {
                     $this->clearMainImage($toolId, $toolImage->id);
                 }
 

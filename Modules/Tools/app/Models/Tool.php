@@ -5,6 +5,7 @@ namespace Modules\Tools\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\Storage;
 use Modules\Bookings\Models\Booking;
 use Modules\Categories\Models\Category;
 use Modules\ToolImages\Models\ToolImage;
@@ -30,6 +31,16 @@ class Tool extends Model
             'price_per_day' => 'decimal:2',
             'deposit_amount' => 'decimal:2',
         ];
+    }
+
+    protected static function booted(): void
+    {
+        static::deleting(function (Tool $tool): void {
+            $tool->images()
+                ->pluck('image_path')
+                ->filter()
+                ->each(fn (string $path) => Storage::disk('public')->delete($path));
+        });
     }
 
     public function vendor(): BelongsTo
