@@ -12,12 +12,12 @@ class VendorProfilePolicy
 
     public function viewAny(User $user): bool
     {
-        return true;
+        return $user->role === 'vendor';
     }
 
     public function view(User $user, VendorProfile $vendorProfile): bool
     {
-        return true;
+        return $this->ownsProfile($user, $vendorProfile);
     }
 
     public function create(User $user): bool
@@ -27,11 +27,17 @@ class VendorProfilePolicy
 
     public function update(User $user, VendorProfile $vendorProfile): bool
     {
-        return $vendorProfile->user_id === $user->id;
+        return $this->ownsProfile($user, $vendorProfile);
     }
 
     public function delete(User $user, VendorProfile $vendorProfile): bool
     {
-        return $vendorProfile->user_id === $user->id;
+        return $this->ownsProfile($user, $vendorProfile);
+    }
+
+    private function ownsProfile(User $user, VendorProfile $vendorProfile): bool
+    {
+        return $user->role === 'vendor'
+            && $vendorProfile->user_id === $user->id;
     }
 }

@@ -15,7 +15,14 @@ class VendorsController extends Controller
     {
         $this->authorize('viewAny', VendorProfile::class);
 
-        return response()->json(VendorProfile::query()->with('user')->latest()->paginate());
+        $query = VendorProfile::query()->latest();
+        $user = request()->user();
+
+        if ($user->role === 'vendor') {
+            $query->where('user_id', $user->id);
+        }
+
+        return response()->json($query->paginate());
     }
 
     public function store(StoreVendorRequest $request): JsonResponse
@@ -24,14 +31,14 @@ class VendorsController extends Controller
 
         $vendor = VendorProfile::create($request->validated());
 
-        return response()->json($vendor->load('user'), Response::HTTP_CREATED);
+        return response()->json($vendor, Response::HTTP_CREATED);
     }
 
     public function show(VendorProfile $vendor): JsonResponse
     {
         $this->authorize('view', $vendor);
 
-        return response()->json($vendor->load('user'));
+        return response()->json($vendor);
     }
 
     public function update(UpdateVendorRequest $request, VendorProfile $vendor): JsonResponse
@@ -40,7 +47,7 @@ class VendorsController extends Controller
 
         $vendor->update($request->validated());
 
-        return response()->json($vendor->refresh()->load('user'));
+        return response()->json($vendor->refresh());
     }
 
     public function destroy(VendorProfile $vendor): Response
