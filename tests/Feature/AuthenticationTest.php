@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Laravel\Sanctum\PersonalAccessToken;
 use Tests\TestCase;
 
 class AuthenticationTest extends TestCase
@@ -27,6 +28,7 @@ class AuthenticationTest extends TestCase
             ->assertJsonPath('user.role', 'customer')
             ->assertJsonStructure([
                 'access_token',
+                'expires_at',
                 'token_type',
                 'user' => ['id', 'name', 'email', 'role', 'status'],
             ]);
@@ -38,6 +40,7 @@ class AuthenticationTest extends TestCase
         ]);
 
         $this->assertDatabaseCount('personal_access_tokens', 1);
+        $this->assertAccessTokenExpiresAt($response->json('expires_at'));
     }
 
     public function test_user_can_login_and_receive_token(): void
@@ -58,9 +61,10 @@ class AuthenticationTest extends TestCase
             ->assertOk()
             ->assertJsonPath('token_type', 'Bearer')
             ->assertJsonPath('user.email', 'customer@example.com')
-            ->assertJsonStructure(['access_token', 'token_type', 'user']);
+            ->assertJsonStructure(['access_token', 'expires_at', 'token_type', 'user']);
 
         $this->assertDatabaseCount('personal_access_tokens', 1);
+        $this->assertAccessTokenExpiresAt($response->json('expires_at'));
     }
 
     public function test_user_cannot_login_with_invalid_password(): void
@@ -199,6 +203,25 @@ class AuthenticationTest extends TestCase
             ->assertJsonPath('email', $user->email);
     }
 
+    public function test_expired_bearer_token_cannot_access_protected_api(): void
+    {
+        config(['sanctum.expiration' => 1]);
+        app('auth')->forgetGuards();
+
+        $user = User::factory()->create();
+        $token = $user->createToken('test-client')->plainTextToken;
+
+        $user->tokens()->first()->forceFill([
+            'created_at' => now()->subMinutes(2),
+        ])->save();
+
+        $response = $this
+            ->withToken($token)
+            ->getJson('/api/user');
+
+        $response->assertUnauthorized();
+    }
+
     public function test_user_can_logout_current_token(): void
     {
         $user = User::factory()->create();
@@ -211,5 +234,15 @@ class AuthenticationTest extends TestCase
         $response->assertNoContent();
 
         $this->assertDatabaseCount('personal_access_tokens', 0);
+    }
+
+    private function assertAccessTokenExpiresAt(string $expiresAt): void
+    {
+        $token = PersonalAccessToken::query()->sole();
+
+        $this->assertNotNull($token->expires_at);
+        $this->assertSame($token->expires_at->toISOString(), $expiresAt);
+        $this->assertTrue($token->expires_at->isAfter(now()->addMinutes(config('sanctum.expiration'))->subMinute()));
+        $this->assertTrue($token->expires_at->isBefore(now()->addMinutes(config('sanctum.expiration'))->addMinute()));
     }
 }

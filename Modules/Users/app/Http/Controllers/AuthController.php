@@ -4,11 +4,13 @@ namespace Modules\Users\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use DateTimeInterface;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
+use Laravel\Sanctum\NewAccessToken;
 use Modules\Users\Http\Requests\LoginRequest;
 use Modules\Users\Http\Requests\RegisterRequest;
 
@@ -27,8 +29,11 @@ class AuthController extends Controller
             'status' => 'active',
         ]);
 
+        $accessToken = $this->createAccessToken($user, $deviceName);
+
         return response()->json([
-            'access_token' => $user->createToken($deviceName)->plainTextToken,
+            'access_token' => $accessToken->plainTextToken,
+            'expires_at' => $accessToken->accessToken->expires_at->toISOString(),
             'token_type' => 'Bearer',
             'user' => $user,
         ], Response::HTTP_CREATED);
@@ -51,8 +56,11 @@ class AuthController extends Controller
             ]);
         }
 
+        $accessToken = $this->createAccessToken($user, $validated['device_name'] ?? $request->userAgent() ?? 'api-token');
+
         return response()->json([
-            'access_token' => $user->createToken($validated['device_name'] ?? $request->userAgent() ?? 'api-token')->plainTextToken,
+            'access_token' => $accessToken->plainTextToken,
+            'expires_at' => $accessToken->accessToken->expires_at->toISOString(),
             'token_type' => 'Bearer',
             'user' => $user,
         ]);
@@ -67,5 +75,15 @@ class AuthController extends Controller
         }
 
         return response()->noContent();
+    }
+
+    private function createAccessToken(User $user, string $deviceName): NewAccessToken
+    {
+        return $user->createToken($deviceName, ['*'], $this->tokenExpiresAt());
+    }
+
+    private function tokenExpiresAt(): DateTimeInterface
+    {
+        return now()->addMinutes(max((int) config('sanctum.expiration'), 1));
     }
 }
