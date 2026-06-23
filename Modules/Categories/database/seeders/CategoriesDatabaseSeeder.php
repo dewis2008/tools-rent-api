@@ -3,14 +3,20 @@
 namespace Modules\Categories\Database\Seeders;
 
 use Illuminate\Database\Seeder;
+use Modules\Categories\Models\Category;
 
 class CategoriesDatabaseSeeder extends Seeder
 {
-    /**
-     * Run the database seeds.
-     */
     public function run(): void
     {
-        // $this->call([]);
+        collect([
+            ['name' => 'Power Tools', 'slug' => 'power-tools'],
+            ['name' => 'Garden Equipment', 'slug' => 'garden-equipment'],
+            ['name' => 'Lifting Gear', 'slug' => 'lifting-gear'],
+            ['name' => 'Cleaning Machines', 'slug' => 'cleaning-machines'],
+        ])->each(fn (array $category) => Category::query()->updateOrCreate(
+            ['slug' => $category['slug']],
+            $category,
+        ));
     }
 }

@@ -2,9 +2,16 @@
 
 namespace Database\Seeders;
 
-use App\Models\User;
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
+use Modules\Bookings\Database\Seeders\BookingsDatabaseSeeder;
+use Modules\Categories\Database\Seeders\CategoriesDatabaseSeeder;
+use Modules\LockCodes\Database\Seeders\LockCodesDatabaseSeeder;
+use Modules\Payments\Database\Seeders\PaymentsDatabaseSeeder;
+use Modules\ToolImages\Database\Seeders\ToolImagesDatabaseSeeder;
+use Modules\Tools\Database\Seeders\ToolsDatabaseSeeder;
+use Modules\Users\Database\Seeders\UsersDatabaseSeeder;
+use Modules\Vendors\Database\Seeders\VendorsDatabaseSeeder;
 
 class DatabaseSeeder extends Seeder
 {
@@ -15,11 +22,15 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        // User::factory(10)->create();
-
-        User::factory()->create([
-            'name' => 'Test User',
-            'email' => 'test@example.com',
+        $this->call([
+            UsersDatabaseSeeder::class,
+            CategoriesDatabaseSeeder::class,
+            VendorsDatabaseSeeder::class,
+            ToolsDatabaseSeeder::class,
+            ToolImagesDatabaseSeeder::class,
+            BookingsDatabaseSeeder::class,
+            PaymentsDatabaseSeeder::class,
+            LockCodesDatabaseSeeder::class,
         ]);
     }
 }

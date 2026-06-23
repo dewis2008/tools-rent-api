@@ -3,15 +3,19 @@
 namespace Modules\Vendors\Models;
 
 use App\Models\User;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Modules\Bookings\Models\Booking;
 use Modules\ToolImages\Services\ToolImageService;
 use Modules\Tools\Models\Tool;
+use Modules\Vendors\Database\Factories\VendorProfileFactory;
 
 class VendorProfile extends Model
 {
+    use HasFactory;
+
     protected $fillable = [
         'user_id',
         'business_name',
@@ -26,6 +30,11 @@ class VendorProfile extends Model
         return [
             'rating' => 'decimal:1',
         ];
+    }
+
+    protected static function newFactory(): VendorProfileFactory
+    {
+        return VendorProfileFactory::new();
     }
 
     protected static function booted(): void

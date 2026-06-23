@@ -3,14 +3,26 @@
 namespace Modules\LockCodes\Database\Seeders;
 
 use Illuminate\Database\Seeder;
+use Modules\Bookings\Models\Booking;
+use Modules\LockCodes\Models\LockCode;
 
 class LockCodesDatabaseSeeder extends Seeder
 {
-    /**
-     * Run the database seeds.
-     */
     public function run(): void
     {
-        // $this->call([]);
+        Booking::query()
+            ->whereIn('status', ['paid', 'active'])
+            ->get()
+            ->each(function (Booking $booking): void {
+                LockCode::query()->updateOrCreate(
+                    ['booking_id' => $booking->id],
+                    [
+                        'code' => str_pad((string) (100000 + $booking->id), 6, '0', STR_PAD_LEFT),
+                        'valid_from' => $booking->start_at->copy()->subHour(),
+                        'valid_until' => $booking->end_at->copy()->addHour(),
+                        'status' => $booking->status === 'active' ? 'active' : 'generated',
+                    ],
+                );
+            });
     }
 }

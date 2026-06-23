@@ -45,4 +45,35 @@ class UserFactory extends Factory
             'email_verified_at' => null,
         ]);
     }
+
+    public function admin(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'role' => 'admin',
+            'status' => 'active',
+        ]);
+    }
+
+    public function vendor(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'role' => 'vendor',
+            'status' => 'active',
+        ]);
+    }
+
+    public function customer(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'role' => 'customer',
+            'status' => 'active',
+        ]);
+    }
+
+    public function blocked(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'status' => 'blocked',
+        ]);
+    }
 }

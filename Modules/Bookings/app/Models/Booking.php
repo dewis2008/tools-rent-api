@@ -3,9 +3,11 @@
 namespace Modules\Bookings\Models;
 
 use App\Models\User;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Modules\Bookings\Database\Factories\BookingFactory;
 use Modules\LockCodes\Models\LockCode;
 use Modules\Payments\Models\Payment;
 use Modules\Tools\Models\Tool;
@@ -13,6 +15,8 @@ use Modules\Vendors\Models\VendorProfile;
 
 class Booking extends Model
 {
+    use HasFactory;
+
     protected $fillable = [
         'tool_id',
         'customer_id',
@@ -38,6 +42,11 @@ class Booking extends Model
             'vendor_amount' => 'decimal:2',
             'total_amount' => 'decimal:2',
         ];
+    }
+
+    protected static function newFactory(): BookingFactory
+    {
+        return BookingFactory::new();
     }
 
     public function tool(): BelongsTo
