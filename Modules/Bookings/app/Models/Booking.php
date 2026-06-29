@@ -3,6 +3,7 @@
 namespace Modules\Bookings\Models;
 
 use App\Models\User;
+use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -87,5 +88,15 @@ class Booking extends Model
         }
 
         return ! $this->lockCode()->exists();
+    }
+
+    public function isRentalActiveAt(CarbonInterface $dateTime): bool
+    {
+        if ($this->status !== 'active') {
+            return false;
+        }
+
+        return $this->start_at->lte($dateTime)
+            && $this->end_at->gte($dateTime);
     }
 }

@@ -11,6 +11,7 @@ use Modules\Bookings\Models\Booking;
 use Modules\LockCodes\Models\LockCode;
 use Modules\Tools\Models\Tool;
 use Modules\Vendors\Models\VendorProfile;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 class LockCodeSecurityTest extends TestCase
@@ -105,12 +106,14 @@ class LockCodeSecurityTest extends TestCase
             ->assertForbidden();
     }
 
-    public function test_vendor_can_reveal_own_lock_code(): void
+    public function test_vendor_can_reveal_own_active_valid_lock_code_during_active_rental(): void
     {
         [$vendor, $booking] = $this->createVendorBooking();
-        $lockCode = LockCode::factory()->create([
+        $lockCode = LockCode::factory()->active()->create([
             'booking_id' => $booking->id,
             'code' => '123456',
+            'valid_from' => now()->subMinute(),
+            'valid_until' => now()->addMinute(),
         ]);
 
         Log::shouldReceive('info')->once();
@@ -120,6 +123,108 @@ class LockCodeSecurityTest extends TestCase
             ->getJson("/api/v1/lock-codes/{$lockCode->id}/reveal")
             ->assertOk()
             ->assertJsonPath('code', '123456');
+    }
+
+    #[DataProvider('ineligibleBookingProvider')]
+    public function test_vendor_cannot_reveal_active_lock_code_for_ineligible_booking(
+        string $status,
+        bool $futureRental,
+    ): void {
+        [$vendor, $booking] = $this->createVendorBooking();
+        $booking->update(['status' => $status]);
+
+        if ($futureRental) {
+            $booking->update([
+                'start_at' => now()->addDay(),
+                'end_at' => now()->addDays(2),
+            ]);
+        }
+
+        $lockCode = LockCode::factory()->active()->create([
+            'booking_id' => $booking->id,
+            'valid_from' => now()->subMinute(),
+            'valid_until' => now()->addMinute(),
+        ]);
+
+        $this
+            ->withToken($vendor->createToken('test-client')->plainTextToken)
+            ->getJson("/api/v1/lock-codes/{$lockCode->id}/reveal")
+            ->assertForbidden();
+    }
+
+    #[DataProvider('ineligibleBookingProvider')]
+    public function test_vendor_cannot_activate_lock_code_for_ineligible_booking(
+        string $status,
+        bool $futureRental,
+    ): void {
+        [$vendor, $booking] = $this->createVendorBooking();
+        $booking->update(['status' => $status]);
+
+        if ($futureRental) {
+            $booking->update([
+                'start_at' => now()->addDay(),
+                'end_at' => now()->addDays(2),
+            ]);
+        }
+
+        $lockCode = LockCode::factory()->create([
+            'booking_id' => $booking->id,
+            'valid_from' => $booking->start_at,
+            'valid_until' => $booking->end_at,
+        ]);
+
+        $this
+            ->withToken($vendor->createToken('test-client')->plainTextToken)
+            ->patchJson("/api/v1/lock-codes/{$lockCode->id}", ['status' => 'active'])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('status');
+    }
+
+    public function test_vendor_can_activate_lock_code_during_active_booking_rental(): void
+    {
+        [$vendor, $booking] = $this->createVendorBooking();
+        $lockCode = LockCode::factory()->create([
+            'booking_id' => $booking->id,
+            'valid_from' => $booking->start_at,
+            'valid_until' => $booking->end_at,
+        ]);
+
+        $this
+            ->withToken($vendor->createToken('test-client')->plainTextToken)
+            ->patchJson("/api/v1/lock-codes/{$lockCode->id}", ['status' => 'active'])
+            ->assertOk()
+            ->assertJsonPath('status', 'active');
+    }
+
+    public function test_lock_code_validity_must_stay_within_booking_rental_window(): void
+    {
+        [$vendor, $booking] = $this->createVendorBooking();
+        $token = $vendor->createToken('test-client')->plainTextToken;
+
+        $this
+            ->withToken($token)
+            ->postJson('/api/v1/lock-codes', [
+                'booking_id' => $booking->id,
+                'code' => '123456',
+                'valid_from' => $booking->start_at->copy()->subMinute()->toDateTimeString(),
+                'valid_until' => $booking->end_at->copy()->addMinute()->toDateTimeString(),
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['valid_from', 'valid_until']);
+
+        $lockCode = LockCode::factory()->create([
+            'booking_id' => $booking->id,
+            'valid_from' => $booking->start_at,
+            'valid_until' => $booking->end_at,
+        ]);
+
+        $this
+            ->withToken($token)
+            ->patchJson("/api/v1/lock-codes/{$lockCode->id}", [
+                'valid_until' => $booking->end_at->copy()->addMinute()->toDateTimeString(),
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('valid_until');
     }
 
     public function test_partial_lock_code_updates_preserve_valid_interval(): void
@@ -156,6 +261,18 @@ class LockCodeSecurityTest extends TestCase
         $this->assertTrue($lockCode->valid_until->equalTo($validUntil));
     }
 
+    /** @return array<string, array{0: string, 1: bool}> */
+    public static function ineligibleBookingProvider(): array
+    {
+        return [
+            'pending booking' => ['pending', false],
+            'paid booking' => ['paid', false],
+            'cancelled booking' => ['cancelled', false],
+            'completed booking' => ['completed', false],
+            'future active booking' => ['active', true],
+        ];
+    }
+
     private function createVendorBooking(): array
     {
         $vendor = User::factory()->vendor()->create();
@@ -166,10 +283,12 @@ class LockCodeSecurityTest extends TestCase
         $tool = Tool::factory()->create([
             'vendor_id' => $vendorProfile->id,
         ]);
-        $booking = Booking::factory()->paid()->create([
+        $booking = Booking::factory()->active()->create([
             'tool_id' => $tool->id,
             'customer_id' => $customer->id,
             'vendor_id' => $vendorProfile->id,
+            'start_at' => now()->subDay(),
+            'end_at' => now()->addDays(3),
         ]);
 
         return [$vendor, $booking, $customer];

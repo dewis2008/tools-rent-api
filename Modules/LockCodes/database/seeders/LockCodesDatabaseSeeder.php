@@ -18,8 +18,8 @@ class LockCodesDatabaseSeeder extends Seeder
                     ['booking_id' => $booking->id],
                     [
                         'code' => str_pad((string) (100000 + $booking->id), 6, '0', STR_PAD_LEFT),
-                        'valid_from' => $booking->start_at->copy()->subHour(),
-                        'valid_until' => $booking->end_at->copy()->addHour(),
+                        'valid_from' => $booking->start_at,
+                        'valid_until' => $booking->end_at,
                         'status' => $booking->status === 'active' ? 'active' : 'generated',
                     ],
                 );
