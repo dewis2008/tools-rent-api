@@ -85,7 +85,18 @@ class VendorsController extends Controller
     {
         $this->authorize('delete', $vendor);
 
-        $vendor->delete();
+        DB::transaction(function () use ($vendor): void {
+            $user = $vendor->user()->first();
+
+            $vendor->delete();
+
+            if ($user?->role !== 'vendor') {
+                return;
+            }
+
+            $user->update(['status' => 'pending']);
+            $user->tokens()->delete();
+        });
 
         return response()->noContent();
     }

@@ -340,6 +340,91 @@ class AuthenticationTest extends TestCase
         $this->assertSame('pending', $vendor->refresh()->status);
     }
 
+    public function test_admin_cannot_change_an_active_customer_to_a_vendor_without_approval(): void
+    {
+        $customer = User::factory()->customer()->create();
+        $customer->createToken('customer-client');
+        $admin = User::factory()->admin()->create();
+
+        $this
+            ->withToken($admin->createToken('admin-client')->plainTextToken)
+            ->patchJson("/api/v1/users/{$customer->id}", [
+                'role' => 'vendor',
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('role');
+
+        $customer->refresh();
+
+        $this->assertSame('customer', $customer->role);
+        $this->assertSame('active', $customer->status);
+        $this->assertSame(1, $customer->tokens()->count());
+    }
+
+    public function test_admin_cannot_create_an_active_vendor_without_approval(): void
+    {
+        $admin = User::factory()->admin()->create();
+
+        $this
+            ->withToken($admin->createToken('admin-client')->plainTextToken)
+            ->postJson('/api/v1/users', [
+                'name' => 'Unapproved Vendor',
+                'email' => 'unapproved-vendor@example.com',
+                'password' => 'password',
+                'role' => 'vendor',
+                'status' => 'active',
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('status');
+
+        $this->assertDatabaseMissing('users', [
+            'email' => 'unapproved-vendor@example.com',
+        ]);
+    }
+
+    public function test_admin_created_user_receives_email_verification_notification(): void
+    {
+        Notification::fake();
+
+        $admin = User::factory()->admin()->create();
+
+        $this
+            ->withToken($admin->createToken('admin-client')->plainTextToken)
+            ->postJson('/api/v1/users', [
+                'name' => 'Invited Customer',
+                'email' => 'invited-customer@example.com',
+                'password' => 'password',
+                'role' => 'customer',
+            ])
+            ->assertCreated()
+            ->assertJsonPath('email', 'invited-customer@example.com');
+
+        $user = User::query()->where('email', 'invited-customer@example.com')->sole();
+
+        $this->assertFalse($user->hasVerifiedEmail());
+        $this->assertSame('pending', $user->status);
+        Notification::assertSentToTimes($user, VerifyEmail::class, 1);
+    }
+
+    public function test_deleting_vendor_profile_returns_owner_to_onboarding(): void
+    {
+        $vendor = User::factory()->vendor()->create();
+        $profile = VendorProfile::factory()->create([
+            'user_id' => $vendor->id,
+            'verification_status' => 'approved',
+        ]);
+        $token = $vendor->createToken('vendor-client')->plainTextToken;
+
+        $this
+            ->withToken($token)
+            ->deleteJson("/api/v1/vendors/{$profile->id}")
+            ->assertNoContent();
+
+        $this->assertDatabaseMissing('vendor_profiles', ['id' => $profile->id]);
+        $this->assertSame('pending', $vendor->refresh()->status);
+        $this->assertSame(0, $vendor->tokens()->count());
+    }
+
     public function test_user_can_login_and_receive_token(): void
     {
         $user = User::factory()->create([

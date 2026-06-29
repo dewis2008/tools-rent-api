@@ -4,6 +4,7 @@ namespace Modules\Users\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use Illuminate\Auth\Events\Registered;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Response;
 use Modules\Users\Http\Requests\StoreUserRequest;
@@ -23,6 +24,8 @@ class UsersController extends Controller
         $this->authorize('create', User::class);
 
         $user = User::create($request->validated());
+
+        event(new Registered($user));
 
         return response()->json($user, Response::HTTP_CREATED);
     }

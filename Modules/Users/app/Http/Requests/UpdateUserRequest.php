@@ -42,23 +42,30 @@ class UpdateUserRequest extends FormRequest
     {
         return [
             function (Validator $validator): void {
-                if ($this->input('status') !== 'active') {
+                if (! $this->hasAny(['role', 'status'])) {
                     return;
                 }
 
                 $user = $this->route('user');
+                $status = $this->input('status', $user->status);
                 $role = $this->input('role', $user->role);
 
+                if ($status !== 'active') {
+                    return;
+                }
+
                 if ($role === 'vendor') {
+                    $errorField = $this->has('status') ? 'status' : 'role';
+
                     $validator->errors()->add(
-                        'status',
+                        $errorField,
                         __('Vendors must be activated by approving their vendor profile.'),
                     );
 
                     return;
                 }
 
-                if (! $user->hasVerifiedEmail()) {
+                if ($this->has('status') && ! $user->hasVerifiedEmail()) {
                     $validator->errors()->add('status', __('The email address must be verified before activation.'));
                 }
             },
