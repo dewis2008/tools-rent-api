@@ -30,8 +30,14 @@ class UpdateToolImageRequest extends FormRequest
             return true;
         }
 
-        $tool = Tool::query()->find($this->input('tool_id'));
+        $toolId = $this->input('tool_id');
 
-        return $tool && $user->vendorProfile()->whereKey($tool->vendor_id)->exists();
+        if (! is_scalar($toolId) || filter_var($toolId, FILTER_VALIDATE_INT) === false) {
+            return true;
+        }
+
+        $tool = Tool::query()->find((int) $toolId);
+
+        return ! $tool || $user->vendorProfile()->whereKey($tool->vendor_id)->exists();
     }
 }

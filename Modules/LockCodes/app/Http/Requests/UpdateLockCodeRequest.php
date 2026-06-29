@@ -93,8 +93,14 @@ class UpdateLockCodeRequest extends FormRequest
             return true;
         }
 
-        $booking = Booking::query()->find($this->input('booking_id'));
+        $bookingId = $this->input('booking_id');
 
-        return $booking && $user->vendorProfile()->whereKey($booking->vendor_id)->exists();
+        if (! is_scalar($bookingId) || filter_var($bookingId, FILTER_VALIDATE_INT) === false) {
+            return true;
+        }
+
+        $booking = Booking::query()->find((int) $bookingId);
+
+        return ! $booking || $user->vendorProfile()->whereKey($booking->vendor_id)->exists();
     }
 }

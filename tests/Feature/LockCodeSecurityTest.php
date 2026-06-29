@@ -261,6 +261,34 @@ class LockCodeSecurityTest extends TestCase
         $this->assertTrue($lockCode->valid_until->equalTo($validUntil));
     }
 
+    public function test_lock_code_requests_reject_malformed_booking_ids_with_validation_errors(): void
+    {
+        [$vendor, $booking] = $this->createVendorBooking();
+        $lockCode = LockCode::factory()->create([
+            'booking_id' => $booking->id,
+        ]);
+        $token = $vendor->createToken('test-client')->plainTextToken;
+
+        $this
+            ->withToken($token)
+            ->postJson('/api/v1/lock-codes', [
+                'booking_id' => [],
+                'code' => '123456',
+                'valid_from' => $booking->start_at->toDateTimeString(),
+                'valid_until' => $booking->end_at->toDateTimeString(),
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('booking_id');
+
+        $this
+            ->withToken($token)
+            ->patchJson("/api/v1/lock-codes/{$lockCode->id}", [
+                'booking_id' => [],
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('booking_id');
+    }
+
     /** @return array<string, array{0: string, 1: bool}> */
     public static function ineligibleBookingProvider(): array
     {
