@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Modules\Bookings\Database\Factories\BookingFactory;
 use Modules\LockCodes\Models\LockCode;
 use Modules\Payments\Models\Payment;
@@ -16,6 +17,7 @@ use Modules\Vendors\Models\VendorProfile;
 class Booking extends Model
 {
     use HasFactory;
+    use SoftDeletes;
 
     protected $fillable = [
         'tool_id',
@@ -72,5 +74,18 @@ class Booking extends Model
     public function lockCode(): HasOne
     {
         return $this->hasOne(LockCode::class);
+    }
+
+    public function isSafelyDeletable(): bool
+    {
+        if ($this->status !== 'pending') {
+            return false;
+        }
+
+        if ($this->payment()->exists()) {
+            return false;
+        }
+
+        return ! $this->lockCode()->exists();
     }
 }

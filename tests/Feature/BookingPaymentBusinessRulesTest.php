@@ -6,6 +6,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\Bookings\Models\Booking;
 use Modules\Categories\Models\Category;
+use Modules\LockCodes\Models\LockCode;
 use Modules\Payments\Models\Payment;
 use Modules\Tools\Models\Tool;
 use Modules\Vendors\Models\VendorProfile;
@@ -134,6 +135,69 @@ class BookingPaymentBusinessRulesTest extends TestCase
             ->patchJson("/api/v1/bookings/{$booking->id}", ['status' => 'cancelled'])
             ->assertOk()
             ->assertJsonPath('status', 'cancelled');
+    }
+
+    public function test_customer_can_soft_delete_safe_pending_booking(): void
+    {
+        $customer = User::factory()->create(['role' => 'customer']);
+        $booking = $this->createBooking($customer);
+
+        $this
+            ->withToken($customer->createToken('test-client')->plainTextToken)
+            ->deleteJson("/api/v1/bookings/{$booking->id}")
+            ->assertNoContent();
+
+        $this->assertSoftDeleted($booking);
+    }
+
+    public function test_customer_and_vendor_cannot_delete_paid_booking_or_its_audit_records(): void
+    {
+        $customer = User::factory()->create(['role' => 'customer']);
+        $vendor = User::factory()->create(['role' => 'vendor']);
+        $vendorProfile = $this->createVendorProfile($vendor);
+        $booking = $this->createBooking($customer, vendorProfile: $vendorProfile, attributes: [
+            'status' => 'paid',
+        ]);
+        $payment = $this->createPayment($booking, ['status' => 'paid']);
+        $lockCode = LockCode::create([
+            'booking_id' => $booking->id,
+            'code' => '482951',
+            'valid_from' => $booking->start_at,
+            'valid_until' => $booking->end_at,
+        ]);
+
+        foreach ([$customer, $vendor] as $user) {
+            $this
+                ->withToken($user->createToken('test-client')->plainTextToken)
+                ->deleteJson("/api/v1/bookings/{$booking->id}")
+                ->assertForbidden();
+        }
+
+        $this->assertDatabaseHas('bookings', [
+            'id' => $booking->id,
+            'status' => 'paid',
+            'deleted_at' => null,
+        ]);
+        $this->assertDatabaseHas('payments', ['id' => $payment->id]);
+        $this->assertDatabaseHas('lock_codes', ['id' => $lockCode->id]);
+    }
+
+    public function test_pending_booking_with_payment_record_cannot_be_deleted(): void
+    {
+        $customer = User::factory()->create(['role' => 'customer']);
+        $booking = $this->createBooking($customer);
+        $payment = $this->createPayment($booking);
+
+        $this
+            ->withToken($customer->createToken('test-client')->plainTextToken)
+            ->deleteJson("/api/v1/bookings/{$booking->id}")
+            ->assertForbidden();
+
+        $this->assertDatabaseHas('bookings', [
+            'id' => $booking->id,
+            'deleted_at' => null,
+        ]);
+        $this->assertDatabaseHas('payments', ['id' => $payment->id]);
     }
 
     public function test_vendor_can_progress_paid_booking_to_active_and_completed(): void

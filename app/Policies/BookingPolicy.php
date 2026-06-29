@@ -34,6 +34,7 @@ class BookingPolicy
 
     public function delete(User $user, Booking $booking): bool
     {
-        return $this->view($user, $booking);
+        return $this->view($user, $booking)
+            && $booking->isSafelyDeletable();
     }
 }
