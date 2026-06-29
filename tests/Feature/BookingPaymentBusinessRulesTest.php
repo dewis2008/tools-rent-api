@@ -68,6 +68,31 @@ class BookingPaymentBusinessRulesTest extends TestCase
         $this->assertDatabaseCount('bookings', 0);
     }
 
+    public function test_customer_cannot_book_active_tool_from_unapproved_vendor(): void
+    {
+        $customer = User::factory()->create(['role' => 'customer']);
+        $category = Category::create(['name' => 'Drills', 'slug' => 'drills']);
+        $token = $customer->createToken('test-client')->plainTextToken;
+
+        foreach (['pending', 'rejected'] as $verificationStatus) {
+            $vendorProfile = $this->createVendorProfile(User::factory()->create(['role' => 'vendor']));
+            $vendorProfile->update(['verification_status' => $verificationStatus]);
+            $tool = $this->createTool($vendorProfile, $category, status: 'active');
+
+            $this
+                ->withToken($token)
+                ->postJson('/api/v1/bookings', [
+                    'tool_id' => $tool->id,
+                    'start_at' => now()->addDay()->toDateTimeString(),
+                    'end_at' => now()->addDays(2)->toDateTimeString(),
+                ])
+                ->assertUnprocessable()
+                ->assertJsonValidationErrors('tool_id');
+        }
+
+        $this->assertDatabaseCount('bookings', 0);
+    }
+
     public function test_booking_rejects_overlapping_active_reservations(): void
     {
         $customer = User::factory()->create(['role' => 'customer']);
