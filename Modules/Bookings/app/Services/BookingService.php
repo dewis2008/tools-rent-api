@@ -3,6 +3,7 @@
 namespace Modules\Bookings\Services;
 
 use App\Models\User;
+use App\Services\BookingPaymentStateService;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -14,13 +15,9 @@ class BookingService
 {
     private const BlockingStatuses = ['pending', 'paid', 'active'];
 
-    private const StatusTransitions = [
-        'pending' => ['paid', 'cancelled'],
-        'paid' => ['active', 'cancelled'],
-        'active' => ['completed'],
-        'completed' => [],
-        'cancelled' => [],
-    ];
+    public function __construct(
+        private BookingPaymentStateService $bookingPaymentStates,
+    ) {}
 
     public function create(array $validated, User $user): Booking
     {
@@ -59,31 +56,7 @@ class BookingService
 
     public function transition(Booking $booking, string $status, User $user): Booking
     {
-        return DB::transaction(function () use ($booking, $status, $user): Booking {
-            $booking = Booking::query()->lockForUpdate()->findOrFail($booking->id);
-
-            if ($booking->status === $status) {
-                return $booking;
-            }
-
-            $allowedStatuses = self::StatusTransitions[$booking->status] ?? [];
-
-            if (! in_array($status, $allowedStatuses, true)) {
-                throw ValidationException::withMessages([
-                    'status' => __("Cannot transition booking from {$booking->status} to {$status}."),
-                ]);
-            }
-
-            if (! $this->canTransition($booking, $status, $user)) {
-                throw ValidationException::withMessages([
-                    'status' => __('You cannot perform this booking status transition.'),
-                ]);
-            }
-
-            $booking->update(['status' => $status]);
-
-            return $booking;
-        });
+        return $this->bookingPaymentStates->transitionBooking($booking, $status, $user);
     }
 
     public function delete(Booking $booking): void
@@ -152,21 +125,5 @@ class BookingService
         throw ValidationException::withMessages([
             'tool_id' => __('The selected tool is not available for booking.'),
         ]);
-    }
-
-    private function canTransition(Booking $booking, string $status, User $user): bool
-    {
-        if ($user->role === 'admin') {
-            return true;
-        }
-
-        if ($user->role === 'customer') {
-            return $booking->customer_id === $user->id
-                && $booking->status === 'pending'
-                && $status === 'cancelled';
-        }
-
-        return $user->vendorProfile()->whereKey($booking->vendor_id)->exists()
-            && in_array($status, ['active', 'completed', 'cancelled'], true);
     }
 }
