@@ -39,11 +39,22 @@ class UsersController extends Controller
         $this->authorize('update', $user);
 
         $validated = $request->validated();
+        $emailChanged = array_key_exists('email', $validated)
+            && $validated['email'] !== $user->email;
 
-        $user->update($validated);
+        if ($emailChanged) {
+            $user->forceFill(['email_verified_at' => null]);
+        }
 
-        if (array_key_exists('status', $validated) && $validated['status'] !== 'active') {
+        $user->fill($validated)->save();
+
+        if ($emailChanged
+            || (array_key_exists('status', $validated) && $validated['status'] !== 'active')) {
             $user->tokens()->delete();
+        }
+
+        if ($emailChanged) {
+            $user->sendEmailVerificationNotification();
         }
 
         return response()->json($user->refresh());

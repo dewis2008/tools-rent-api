@@ -2,6 +2,7 @@
 
 namespace Modules\Vendors\Http\Requests;
 
+use App\Models\User;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
@@ -42,21 +43,29 @@ class UpdateVendorRequest extends FormRequest
     {
         return [
             function (Validator $validator): void {
-                if (! $this->has('verification_status')) {
+                if (! $this->hasAny(['user_id', 'verification_status'])) {
                     return;
                 }
 
-                $user = $this->route('vendor')?->user;
+                if ($validator->errors()->has('user_id')) {
+                    return;
+                }
+
+                $vendor = $this->route('vendor');
+                $user = User::query()->find($this->input('user_id', $vendor?->user_id));
+                $errorField = $this->has('verification_status') ? 'verification_status' : 'user_id';
 
                 if (! $user || $user->role !== 'vendor') {
-                    $validator->errors()->add('verification_status', __('The profile must belong to a vendor.'));
+                    $validator->errors()->add($errorField, __('The profile must belong to a vendor.'));
 
                     return;
                 }
 
-                if ($this->input('verification_status') === 'approved' && ! $user->hasVerifiedEmail()) {
+                $verificationStatus = $this->input('verification_status', $vendor?->verification_status);
+
+                if ($verificationStatus === 'approved' && ! $user->hasVerifiedEmail()) {
                     $validator->errors()->add(
-                        'verification_status',
+                        $errorField,
                         __('The vendor must verify their email address before approval.'),
                     );
                 }

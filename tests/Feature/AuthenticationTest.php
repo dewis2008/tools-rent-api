@@ -45,7 +45,7 @@ class AuthenticationTest extends TestCase
 
         $this->assertNull($user->email_verified_at);
         $this->assertDatabaseCount('personal_access_tokens', 0);
-        Notification::assertSentTo($user, VerifyEmail::class);
+        Notification::assertSentToTimes($user, VerifyEmail::class, 1);
     }
 
     public function test_verifying_email_activates_customer(): void
@@ -82,6 +82,31 @@ class AuthenticationTest extends TestCase
 
         $this->assertTrue($vendor->hasVerifiedEmail());
         $this->assertSame('pending', $vendor->status);
+    }
+
+    public function test_replaying_verification_link_does_not_reactivate_pending_customer(): void
+    {
+        $user = User::factory()->unverified()->create([
+            'status' => 'pending',
+        ]);
+        $verificationUrl = $this->verificationUrl($user);
+
+        $this->getJson($verificationUrl)->assertOk();
+
+        $admin = User::factory()->admin()->create();
+
+        $this
+            ->withToken($admin->createToken('admin-client')->plainTextToken)
+            ->patchJson("/api/v1/users/{$user->id}", [
+                'status' => 'pending',
+            ])
+            ->assertOk();
+
+        $this->getJson($verificationUrl)
+            ->assertOk()
+            ->assertJsonPath('user.status', 'pending');
+
+        $this->assertSame('pending', $user->refresh()->status);
     }
 
     public function test_verification_notification_can_be_requested_again_without_account_enumeration(): void
@@ -236,6 +261,65 @@ class AuthenticationTest extends TestCase
 
         $this->assertSame('pending', $profile->refresh()->verification_status);
         $this->assertSame('pending', $vendor->refresh()->status);
+    }
+
+    public function test_admin_cannot_approve_profile_for_a_new_unverified_owner(): void
+    {
+        $currentVendor = User::factory()->vendor()->create();
+        $newVendor = User::factory()->vendor()->unverified()->create([
+            'status' => 'pending',
+        ]);
+        $profile = VendorProfile::factory()->create([
+            'user_id' => $currentVendor->id,
+            'verification_status' => 'pending',
+        ]);
+        $admin = User::factory()->admin()->create();
+
+        $this
+            ->withToken($admin->createToken('admin-client')->plainTextToken)
+            ->patchJson("/api/v1/vendors/{$profile->id}", [
+                'user_id' => $newVendor->id,
+                'verification_status' => 'approved',
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('verification_status');
+
+        $profile->refresh();
+
+        $this->assertSame($currentVendor->id, $profile->user_id);
+        $this->assertSame('pending', $profile->verification_status);
+        $this->assertSame('pending', $newVendor->refresh()->status);
+    }
+
+    public function test_reassigning_and_approving_profile_updates_the_new_owner(): void
+    {
+        $currentVendor = User::factory()->vendor()->create();
+        $newVendor = User::factory()->vendor()->create([
+            'status' => 'pending',
+        ]);
+        $profile = VendorProfile::factory()->create([
+            'user_id' => $currentVendor->id,
+            'verification_status' => 'pending',
+        ]);
+        $currentVendor->createToken('current-vendor');
+        $newVendor->createToken('new-vendor', ['vendor:onboarding']);
+        $admin = User::factory()->admin()->create();
+
+        $this
+            ->withToken($admin->createToken('admin-client')->plainTextToken)
+            ->patchJson("/api/v1/vendors/{$profile->id}", [
+                'user_id' => $newVendor->id,
+                'verification_status' => 'approved',
+            ])
+            ->assertOk()
+            ->assertJsonPath('user_id', $newVendor->id)
+            ->assertJsonPath('verification_status', 'approved');
+
+        $this->assertSame('pending', $currentVendor->refresh()->status);
+        $this->assertSame(0, $currentVendor->tokens()->count());
+        $this->assertSame('active', $newVendor->refresh()->status);
+        $this->assertSame(0, $newVendor->tokens()->count());
+        $this->assertSame(1, $admin->tokens()->count());
     }
 
     public function test_admin_cannot_bypass_vendor_profile_approval(): void
@@ -399,6 +483,32 @@ class AuthenticationTest extends TestCase
 
         $this->assertSame(0, $user->tokens()->count());
         $this->assertSame(1, $admin->tokens()->count());
+    }
+
+    public function test_updating_email_requires_verification_and_revokes_existing_tokens(): void
+    {
+        Notification::fake();
+
+        $admin = User::factory()->admin()->create();
+        $user = User::factory()->create();
+        $adminToken = $admin->createToken('admin-client')->plainTextToken;
+        $user->createToken('test-client');
+
+        $this
+            ->withToken($adminToken)
+            ->patchJson("/api/v1/users/{$user->id}", [
+                'email' => 'new-email@example.com',
+            ])
+            ->assertOk()
+            ->assertJsonPath('email', 'new-email@example.com')
+            ->assertJsonPath('email_verified_at', null);
+
+        $user->refresh();
+
+        $this->assertFalse($user->hasVerifiedEmail());
+        $this->assertSame(0, $user->tokens()->count());
+        $this->assertSame(1, $admin->tokens()->count());
+        Notification::assertSentToTimes($user, VerifyEmail::class, 1);
     }
 
     public function test_user_can_access_protected_api_with_bearer_token(): void

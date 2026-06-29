@@ -49,20 +49,33 @@ class VendorsController extends Controller
         $validated = $request->validated();
 
         DB::transaction(function () use ($validated, $vendor): void {
+            $ownerOrStatusChanged = array_key_exists('user_id', $validated)
+                || array_key_exists('verification_status', $validated);
+            $previousUser = $ownerOrStatusChanged
+                ? $vendor->user()->first()
+                : null;
+
             $vendor->update($validated);
 
-            if (! array_key_exists('verification_status', $validated)) {
+            if (! $ownerOrStatusChanged) {
                 return;
             }
 
-            $status = match ($validated['verification_status']) {
+            $user = $vendor->user()->firstOrFail();
+
+            if ($previousUser?->role === 'vendor' && ! $previousUser->is($user)) {
+                $previousUser->update(['status' => 'pending']);
+                $previousUser->tokens()->delete();
+            }
+
+            $status = match ($vendor->verification_status) {
                 'approved' => 'active',
                 'pending' => 'pending',
                 'rejected' => 'blocked',
             };
 
-            $vendor->user()->update(['status' => $status]);
-            $vendor->user->tokens()->delete();
+            $user->update(['status' => $status]);
+            $user->tokens()->delete();
         });
 
         return response()->json($vendor->refresh());

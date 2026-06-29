@@ -22,10 +22,10 @@ class VerifyEmailController extends Controller
         if (! $user->hasVerifiedEmail()) {
             $user->markEmailAsVerified();
             event(new Verified($user));
-        }
 
-        if ($user->role === 'customer' && $user->status === 'pending') {
-            $user->update(['status' => 'active']);
+            if ($user->role === 'customer' && $user->status === 'pending') {
+                $user->update(['status' => 'active']);
+            }
         }
 
         return response()->json([
