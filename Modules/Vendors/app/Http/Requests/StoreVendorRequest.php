@@ -14,8 +14,8 @@ class StoreVendorRequest extends FormRequest
             'business_name' => ['required', 'string', 'max:255'],
             'company_code' => ['nullable', 'string', 'max:50'],
             'vat_code' => ['nullable', 'string', 'max:50'],
-            'verification_status' => ['sometimes', 'required', 'in:pending,approved,rejected'],
-            'rating' => ['nullable', 'numeric', 'min:0', 'max:5'],
+            'verification_status' => ['prohibited'],
+            'rating' => ['prohibited'],
         ];
     }
 

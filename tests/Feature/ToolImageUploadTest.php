@@ -271,7 +271,10 @@ class ToolImageUploadTest extends TestCase
     {
         $vendorProfile = VendorProfile::firstOrCreate(
             ['user_id' => $vendor->id],
-            ['business_name' => "{$vendor->name} Rentals"],
+            [
+                'business_name' => "{$vendor->name} Rentals",
+                'verification_status' => 'approved',
+            ],
         );
         $category = Category::firstOrCreate(
             ['slug' => $slug],

@@ -5,6 +5,7 @@ namespace Modules\Vendors\Http\Controllers;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\DB;
 use Modules\Vendors\Http\Requests\StoreVendorRequest;
 use Modules\Vendors\Http\Requests\UpdateVendorRequest;
 use Modules\Vendors\Models\VendorProfile;
@@ -31,7 +32,7 @@ class VendorsController extends Controller
 
         $vendor = VendorProfile::create($request->validated());
 
-        return response()->json($vendor, Response::HTTP_CREATED);
+        return response()->json($vendor->refresh(), Response::HTTP_CREATED);
     }
 
     public function show(VendorProfile $vendor): JsonResponse
@@ -45,7 +46,24 @@ class VendorsController extends Controller
     {
         $this->authorize('update', $vendor);
 
-        $vendor->update($request->validated());
+        $validated = $request->validated();
+
+        DB::transaction(function () use ($validated, $vendor): void {
+            $vendor->update($validated);
+
+            if (! array_key_exists('verification_status', $validated)) {
+                return;
+            }
+
+            $status = match ($validated['verification_status']) {
+                'approved' => 'active',
+                'pending' => 'pending',
+                'rejected' => 'blocked',
+            };
+
+            $vendor->user()->update(['status' => $status]);
+            $vendor->user->tokens()->delete();
+        });
 
         return response()->json($vendor->refresh());
     }

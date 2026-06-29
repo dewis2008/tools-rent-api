@@ -4,6 +4,7 @@ namespace Modules\Vendors\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Validator;
 
 class UpdateVendorRequest extends FormRequest
 {
@@ -34,5 +35,32 @@ class UpdateVendorRequest extends FormRequest
         }
 
         return $user->role === 'admin' || ! $this->hasAny(['user_id', 'verification_status', 'rating']);
+    }
+
+    /** @return array<int, callable> */
+    public function after(): array
+    {
+        return [
+            function (Validator $validator): void {
+                if (! $this->has('verification_status')) {
+                    return;
+                }
+
+                $user = $this->route('vendor')?->user;
+
+                if (! $user || $user->role !== 'vendor') {
+                    $validator->errors()->add('verification_status', __('The profile must belong to a vendor.'));
+
+                    return;
+                }
+
+                if ($this->input('verification_status') === 'approved' && ! $user->hasVerifiedEmail()) {
+                    $validator->errors()->add(
+                        'verification_status',
+                        __('The vendor must verify their email address before approval.'),
+                    );
+                }
+            },
+        ];
     }
 }

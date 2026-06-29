@@ -258,6 +258,7 @@ class BookingPaymentBusinessRulesTest extends TestCase
         return VendorProfile::create([
             'user_id' => $user->id,
             'business_name' => "{$user->name} Rentals",
+            'verification_status' => 'approved',
         ]);
     }
 

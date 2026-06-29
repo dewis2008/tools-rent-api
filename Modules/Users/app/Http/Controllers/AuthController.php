@@ -5,6 +5,7 @@ namespace Modules\Users\Http\Controllers;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use DateTimeInterface;
+use Illuminate\Auth\Events\Registered;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -19,22 +20,19 @@ class AuthController extends Controller
     public function register(RegisterRequest $request): JsonResponse
     {
         $validated = $request->validated();
-        $deviceName = $validated['device_name'] ?? $request->userAgent() ?? 'api-token';
-
-        unset($validated['device_name']);
 
         $user = User::create([
             ...$validated,
             'role' => $validated['role'] ?? 'customer',
-            'status' => 'active',
+            'status' => 'pending',
         ]);
 
-        $accessToken = $this->createAccessToken($user, $deviceName);
+        event(new Registered($user));
 
         return response()->json([
-            'access_token' => $accessToken->plainTextToken,
-            'expires_at' => $accessToken->accessToken->expires_at->toISOString(),
-            'token_type' => 'Bearer',
+            'message' => __('Please verify your email address.'),
+            'requires_email_verification' => true,
+            'requires_vendor_approval' => $user->role === 'vendor',
             'user' => $user,
         ], Response::HTTP_CREATED);
     }
@@ -50,7 +48,19 @@ class AuthController extends Controller
             ]);
         }
 
-        if ($user->status !== 'active') {
+        if (! $user->hasVerifiedEmail()) {
+            throw ValidationException::withMessages([
+                'email' => __('Please verify your email address before signing in.'),
+            ]);
+        }
+
+        if ($user->status === 'pending' && $user->role !== 'vendor') {
+            throw ValidationException::withMessages([
+                'email' => __('Your account is awaiting approval.'),
+            ]);
+        }
+
+        if (! in_array($user->status, ['active', 'pending'], true)) {
             throw ValidationException::withMessages([
                 'email' => __('auth.failed'),
             ]);
@@ -62,6 +72,7 @@ class AuthController extends Controller
             'access_token' => $accessToken->plainTextToken,
             'expires_at' => $accessToken->accessToken->expires_at->toISOString(),
             'token_type' => 'Bearer',
+            'requires_vendor_approval' => $user->status === 'pending',
             'user' => $user,
         ]);
     }
@@ -79,7 +90,11 @@ class AuthController extends Controller
 
     private function createAccessToken(User $user, string $deviceName): NewAccessToken
     {
-        return $user->createToken($deviceName, ['*'], $this->tokenExpiresAt());
+        $abilities = $user->status === 'active'
+            ? ['*']
+            : ['vendor:onboarding'];
+
+        return $user->createToken($deviceName, $abilities, $this->tokenExpiresAt());
     }
 
     private function tokenExpiresAt(): DateTimeInterface
