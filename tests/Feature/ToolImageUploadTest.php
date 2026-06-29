@@ -68,6 +68,35 @@ class ToolImageUploadTest extends TestCase
         $this->assertDatabaseCount('tool_images', 0);
     }
 
+    public function test_tool_image_requests_reject_malformed_tool_ids_with_validation_errors(): void
+    {
+        Storage::fake('public');
+
+        $vendor = User::factory()->create(['role' => 'vendor']);
+        $tool = $this->createToolForVendor($vendor);
+        $toolImage = ToolImage::create([
+            'tool_id' => $tool->id,
+            'image_path' => "tool-images/{$tool->id}/existing.jpg",
+        ]);
+        $token = $vendor->createToken('test-client')->plainTextToken;
+
+        $this
+            ->withToken($token)
+            ->postJson('/api/v1/tool-images', [
+                'tool_id' => [],
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('tool_id');
+
+        $this
+            ->withToken($token)
+            ->patchJson("/api/v1/tool-images/{$toolImage->id}", [
+                'tool_id' => [],
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('tool_id');
+    }
+
     public function test_updating_tool_image_replaces_stored_file(): void
     {
         Storage::fake('public');
