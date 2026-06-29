@@ -246,6 +246,58 @@ class AuthorizationTest extends TestCase
             ->assertForbidden();
     }
 
+    public function test_vendor_only_sees_own_unpublished_tools(): void
+    {
+        $vendor = User::factory()->create(['role' => 'vendor']);
+        $vendorProfile = $this->createVendorProfile($vendor);
+        $otherVendorProfile = $this->createVendorProfile(User::factory()->create(['role' => 'vendor']));
+        $category = Category::create(['name' => 'Drills', 'slug' => 'drills']);
+        $ownPendingTool = $this->createTool($vendorProfile, $category);
+        $ownPendingTool->update(['address' => 'Own private address']);
+        $otherActiveTool = $this->createTool($otherVendorProfile, $category);
+        $otherActiveTool->update([
+            'address' => 'Published address',
+            'status' => 'active',
+        ]);
+        $otherUnpublishedTools = collect(['pending', 'rejected', 'inactive'])
+            ->map(function (string $status) use ($otherVendorProfile, $category): Tool {
+                $tool = $this->createTool($otherVendorProfile, $category);
+                $tool->update([
+                    'address' => "Private {$status} address",
+                    'status' => $status,
+                ]);
+
+                return $tool;
+            });
+        $token = $vendor->createToken('test-client')->plainTextToken;
+
+        $response = $this
+            ->withToken($token)
+            ->getJson('/api/v1/tools')
+            ->assertOk()
+            ->assertJsonCount(2, 'data');
+
+        $this->assertEqualsCanonicalizing(
+            [$ownPendingTool->id, $otherActiveTool->id],
+            collect($response->json('data'))->pluck('id')->all(),
+        );
+
+        foreach ($otherUnpublishedTools as $tool) {
+            $response->assertJsonMissing(['address' => $tool->address]);
+
+            $this
+                ->withToken($token)
+                ->getJson("/api/v1/tools/{$tool->id}")
+                ->assertForbidden();
+        }
+
+        $this
+            ->withToken($token)
+            ->getJson("/api/v1/tools/{$ownPendingTool->id}")
+            ->assertOk()
+            ->assertJsonPath('address', 'Own private address');
+    }
+
     public function test_customer_only_sees_images_for_active_tools(): void
     {
         $customer = User::factory()->create(['role' => 'customer']);
@@ -289,6 +341,66 @@ class AuthorizationTest extends TestCase
             ->withToken($customer->createToken('test-client')->plainTextToken)
             ->getJson("/api/v1/tool-images/{$toolImage->id}")
             ->assertForbidden();
+    }
+
+    public function test_vendor_only_sees_images_for_own_unpublished_tools(): void
+    {
+        $vendor = User::factory()->create(['role' => 'vendor']);
+        $vendorProfile = $this->createVendorProfile($vendor);
+        $otherVendorProfile = $this->createVendorProfile(User::factory()->create(['role' => 'vendor']));
+        $category = Category::create(['name' => 'Drills', 'slug' => 'drills']);
+        $ownPendingTool = $this->createTool($vendorProfile, $category);
+        $ownPendingImage = ToolImage::create([
+            'tool_id' => $ownPendingTool->id,
+            'image_path' => 'tool-images/own-pending.jpg',
+        ]);
+        $otherActiveTool = $this->createTool($otherVendorProfile, $category);
+        $otherActiveTool->update(['status' => 'active']);
+        $otherActiveImage = ToolImage::create([
+            'tool_id' => $otherActiveTool->id,
+            'image_path' => 'tool-images/other-active.jpg',
+        ]);
+        $otherUnpublishedImages = collect(['pending', 'rejected', 'inactive'])
+            ->map(function (string $status) use ($otherVendorProfile, $category): ToolImage {
+                $tool = $this->createTool($otherVendorProfile, $category);
+                $tool->update([
+                    'address' => "Private {$status} image address",
+                    'status' => $status,
+                ]);
+
+                return ToolImage::create([
+                    'tool_id' => $tool->id,
+                    'image_path' => "tool-images/other-{$status}.jpg",
+                ]);
+            });
+        $token = $vendor->createToken('test-client')->plainTextToken;
+
+        $response = $this
+            ->withToken($token)
+            ->getJson('/api/v1/tool-images')
+            ->assertOk()
+            ->assertJsonCount(2, 'data');
+
+        $this->assertEqualsCanonicalizing(
+            [$ownPendingImage->id, $otherActiveImage->id],
+            collect($response->json('data'))->pluck('id')->all(),
+        );
+
+        foreach ($otherUnpublishedImages as $toolImage) {
+            $response->assertJsonMissing(['image_path' => $toolImage->image_path]);
+            $response->assertJsonMissing(['address' => $toolImage->tool->address]);
+
+            $this
+                ->withToken($token)
+                ->getJson("/api/v1/tool-images/{$toolImage->id}")
+                ->assertForbidden();
+        }
+
+        $this
+            ->withToken($token)
+            ->getJson("/api/v1/tool-images/{$ownPendingImage->id}")
+            ->assertOk()
+            ->assertJsonPath('id', $ownPendingImage->id);
     }
 
     public function test_customer_cannot_view_another_customers_booking(): void
