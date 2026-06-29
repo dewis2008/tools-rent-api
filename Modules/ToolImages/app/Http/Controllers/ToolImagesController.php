@@ -17,13 +17,12 @@ class ToolImagesController extends Controller
     {
         $this->authorize('viewAny', ToolImage::class);
 
-        $query = ToolImage::query()->with('tool')->orderBy('sort_order');
-
-        if (request()->user()->role === 'customer') {
-            $query->whereHas('tool', function (Builder $query): void {
-                $query->where('status', 'active');
-            });
-        }
+        $query = ToolImage::query()
+            ->with('tool')
+            ->whereHas('tool', function (Builder $query): void {
+                $query->visibleTo(request()->user());
+            })
+            ->orderBy('sort_order');
 
         return response()->json($query->paginate());
     }

@@ -2,7 +2,9 @@
 
 namespace Modules\Tools\Models;
 
+use App\Models\User;
 use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -83,5 +85,27 @@ class Tool extends Model
     public function hasBookingHistory(): bool
     {
         return $this->bookings()->withTrashed()->exists();
+    }
+
+    public function scopeVisibleTo(Builder $query, User $user): Builder
+    {
+        if ($user->role === 'admin') {
+            return $query;
+        }
+
+        if ($user->role !== 'vendor') {
+            return $query->where('status', 'active');
+        }
+
+        return $query->where(function (Builder $query) use ($user): void {
+            $query
+                ->where('status', 'active')
+                ->orWhereIn(
+                    'vendor_id',
+                    $user->vendorProfile()
+                        ->where('verification_status', 'approved')
+                        ->select('id'),
+                );
+        });
     }
 }

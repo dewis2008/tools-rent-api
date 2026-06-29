@@ -17,11 +17,10 @@ class ToolsController extends Controller
     {
         $this->authorize('viewAny', Tool::class);
 
-        $query = Tool::query()->with(['vendor', 'category'])->latest();
-
-        if (request()->user()->role === 'customer') {
-            $query->where('status', 'active');
-        }
+        $query = Tool::query()
+            ->visibleTo(request()->user())
+            ->with(['vendor', 'category'])
+            ->latest();
 
         return response()->json($query->paginate());
     }

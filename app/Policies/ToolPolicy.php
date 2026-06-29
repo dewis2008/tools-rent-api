@@ -17,11 +17,15 @@ class ToolPolicy
 
     public function view(User $user, Tool $tool): bool
     {
-        if ($user->role === 'customer') {
-            return $tool->status === 'active';
+        if ($tool->status === 'active') {
+            return true;
         }
 
-        return true;
+        if ($user->role !== 'vendor') {
+            return false;
+        }
+
+        return $this->ownsVendorProfile($user, $tool->vendor_id);
     }
 
     public function create(User $user): bool
