@@ -7,6 +7,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Modules\Bookings\Models\Booking;
 use Modules\Categories\Models\Category;
 use Modules\Payments\Models\Payment;
+use Modules\ToolImages\Models\ToolImage;
 use Modules\Tools\Models\Tool;
 use Modules\Vendors\Models\VendorProfile;
 use Tests\TestCase;
@@ -242,6 +243,51 @@ class AuthorizationTest extends TestCase
         $this
             ->withToken($customer->createToken('test-client')->plainTextToken)
             ->getJson("/api/v1/tools/{$tool->id}")
+            ->assertForbidden();
+    }
+
+    public function test_customer_only_sees_images_for_active_tools(): void
+    {
+        $customer = User::factory()->create(['role' => 'customer']);
+        $vendorProfile = $this->createVendorProfile(User::factory()->create(['role' => 'vendor']));
+        $category = Category::create(['name' => 'Drills', 'slug' => 'drills']);
+        $activeTool = $this->createTool($vendorProfile, $category);
+        $activeTool->update(['status' => 'active']);
+        $inactiveTool = $this->createTool($vendorProfile, $category);
+        $inactiveTool->update(['status' => 'inactive']);
+        $activeToolImage = ToolImage::create([
+            'tool_id' => $activeTool->id,
+            'image_path' => 'tool-images/active.jpg',
+        ]);
+        ToolImage::create([
+            'tool_id' => $inactiveTool->id,
+            'image_path' => 'tool-images/inactive.jpg',
+        ]);
+
+        $this
+            ->withToken($customer->createToken('test-client')->plainTextToken)
+            ->getJson('/api/v1/tool-images')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $activeToolImage->id)
+            ->assertJsonPath('data.0.tool.id', $activeTool->id);
+    }
+
+    public function test_customer_cannot_view_image_for_non_active_tool(): void
+    {
+        $customer = User::factory()->create(['role' => 'customer']);
+        $vendorProfile = $this->createVendorProfile(User::factory()->create(['role' => 'vendor']));
+        $category = Category::create(['name' => 'Drills', 'slug' => 'drills']);
+        $tool = $this->createTool($vendorProfile, $category);
+        $tool->update(['status' => 'inactive']);
+        $toolImage = ToolImage::create([
+            'tool_id' => $tool->id,
+            'image_path' => 'tool-images/inactive.jpg',
+        ]);
+
+        $this
+            ->withToken($customer->createToken('test-client')->plainTextToken)
+            ->getJson("/api/v1/tool-images/{$toolImage->id}")
             ->assertForbidden();
     }
 

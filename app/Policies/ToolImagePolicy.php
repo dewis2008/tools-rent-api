@@ -17,7 +17,11 @@ class ToolImagePolicy
 
     public function view(User $user, ToolImage $toolImage): bool
     {
-        return true;
+        if (! $toolImage->tool) {
+            return false;
+        }
+
+        return $user->can('view', $toolImage->tool);
     }
 
     public function create(User $user): bool

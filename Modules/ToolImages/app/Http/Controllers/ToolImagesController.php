@@ -3,6 +3,7 @@
 namespace Modules\ToolImages\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Response;
 use Modules\ToolImages\Http\Requests\StoreToolImageRequest;
@@ -16,7 +17,15 @@ class ToolImagesController extends Controller
     {
         $this->authorize('viewAny', ToolImage::class);
 
-        return response()->json(ToolImage::query()->with('tool')->orderBy('sort_order')->paginate());
+        $query = ToolImage::query()->with('tool')->orderBy('sort_order');
+
+        if (request()->user()->role === 'customer') {
+            $query->whereHas('tool', function (Builder $query): void {
+                $query->where('status', 'active');
+            });
+        }
+
+        return response()->json($query->paginate());
     }
 
     public function store(StoreToolImageRequest $request, ToolImageService $toolImages): JsonResponse
