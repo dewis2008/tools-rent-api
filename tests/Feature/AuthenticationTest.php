@@ -453,9 +453,38 @@ class AuthenticationTest extends TestCase
             ->deleteJson("/api/v1/vendors/{$profile->id}")
             ->assertNoContent();
 
-        $this->assertDatabaseMissing('vendor_profiles', ['id' => $profile->id]);
+        $this->assertSoftDeleted($profile);
         $this->assertSame('pending', $vendor->refresh()->status);
         $this->assertSame(0, $vendor->tokens()->count());
+    }
+
+    public function test_vendor_can_restart_onboarding_after_deleting_profile(): void
+    {
+        $vendor = User::factory()->vendor()->create();
+        $profile = VendorProfile::factory()->create([
+            'user_id' => $vendor->id,
+            'verification_status' => 'approved',
+        ]);
+
+        $this
+            ->withToken($vendor->createToken('vendor-client')->plainTextToken)
+            ->deleteJson("/api/v1/vendors/{$profile->id}")
+            ->assertNoContent();
+
+        $response = $this
+            ->withToken($vendor->createToken('onboarding-client')->plainTextToken)
+            ->postJson('/api/v1/vendors', [
+                'user_id' => $vendor->id,
+                'business_name' => 'Restarted Rentals',
+            ]);
+
+        $response
+            ->assertCreated()
+            ->assertJsonPath('id', $profile->id)
+            ->assertJsonPath('business_name', 'Restarted Rentals')
+            ->assertJsonPath('verification_status', 'pending');
+
+        $this->assertNotSoftDeleted($profile->refresh());
     }
 
     public function test_user_can_login_and_receive_token(): void

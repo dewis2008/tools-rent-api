@@ -36,6 +36,7 @@ class ToolPolicy
 
     public function delete(User $user, Tool $tool): bool
     {
-        return $this->ownsVendorProfile($user, $tool->vendor_id);
+        return $this->ownsVendorProfile($user, $tool->vendor_id)
+            && ! $tool->hasBookingHistory();
     }
 }

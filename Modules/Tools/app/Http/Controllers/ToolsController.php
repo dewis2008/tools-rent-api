@@ -3,8 +3,10 @@
 namespace Modules\Tools\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\DB;
 use Modules\Tools\Http\Requests\StoreToolRequest;
 use Modules\Tools\Http\Requests\UpdateToolRequest;
 use Modules\Tools\Models\Tool;
@@ -53,7 +55,15 @@ class ToolsController extends Controller
     {
         $this->authorize('delete', $tool);
 
-        $tool->delete();
+        DB::transaction(function () use ($tool): void {
+            $tool = Tool::query()->lockForUpdate()->findOrFail($tool->id);
+
+            if ($tool->hasBookingHistory()) {
+                throw new AuthorizationException(__('Tools with booking history cannot be deleted.'));
+            }
+
+            $tool->delete();
+        });
 
         return response()->noContent();
     }

@@ -4,6 +4,7 @@ namespace Modules\Users\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Response;
@@ -66,6 +67,10 @@ class UsersController extends Controller
     public function destroy(User $user): Response
     {
         $this->authorize('delete', $user);
+
+        if ($user->hasBookingHistory()) {
+            throw new AuthorizationException(__('Users with booking history cannot be deleted.'));
+        }
 
         $user->delete();
 

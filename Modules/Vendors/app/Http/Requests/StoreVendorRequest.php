@@ -3,6 +3,7 @@
 namespace Modules\Vendors\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 use Modules\Vendors\Models\VendorProfile;
 
 class StoreVendorRequest extends FormRequest
@@ -10,7 +11,12 @@ class StoreVendorRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'user_id' => ['required', 'integer', 'exists:users,id', 'unique:vendor_profiles,user_id'],
+            'user_id' => [
+                'required',
+                'integer',
+                'exists:users,id',
+                Rule::unique('vendor_profiles', 'user_id')->whereNull('deleted_at'),
+            ],
             'business_name' => ['required', 'string', 'max:255'],
             'company_code' => ['nullable', 'string', 'max:50'],
             'vat_code' => ['nullable', 'string', 'max:50'],

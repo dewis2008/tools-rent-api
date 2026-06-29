@@ -2,10 +2,12 @@
 
 namespace Modules\Tools\Models;
 
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Modules\Bookings\Models\Booking;
 use Modules\Categories\Models\Category;
 use Modules\ToolImages\Models\ToolImage;
@@ -16,6 +18,7 @@ use Modules\Vendors\Models\VendorProfile;
 class Tool extends Model
 {
     use HasFactory;
+    use SoftDeletes;
 
     protected $fillable = [
         'vendor_id',
@@ -45,7 +48,15 @@ class Tool extends Model
     protected static function booted(): void
     {
         static::deleting(function (Tool $tool): void {
+            if ($tool->hasBookingHistory()) {
+                throw new AuthorizationException(__('Tools with booking history cannot be deleted.'));
+            }
+
             app(ToolImageService::class)->deleteFilesForTool($tool);
+
+            if (! $tool->isForceDeleting()) {
+                $tool->images()->delete();
+            }
         });
     }
 
@@ -67,5 +78,10 @@ class Tool extends Model
     public function bookings(): HasMany
     {
         return $this->hasMany(Booking::class);
+    }
+
+    public function hasBookingHistory(): bool
+    {
+        return $this->bookings()->withTrashed()->exists();
     }
 }

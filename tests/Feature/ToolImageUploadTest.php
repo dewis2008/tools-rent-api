@@ -148,6 +148,7 @@ class ToolImageUploadTest extends TestCase
             ->delete("/api/v1/tools/{$tool->id}")
             ->assertNoContent();
 
+        $this->assertSoftDeleted($tool);
         $this->assertDatabaseMissing('tool_images', ['id' => $toolImage->id]);
         Storage::disk('public')->assertMissing($path);
     }
@@ -173,6 +174,8 @@ class ToolImageUploadTest extends TestCase
             ->delete("/api/v1/vendors/{$vendor->vendorProfile->id}")
             ->assertNoContent();
 
+        $this->assertSoftDeleted($vendor->vendorProfile);
+        $this->assertSoftDeleted($tool);
         $this->assertDatabaseMissing('tool_images', ['id' => $toolImage->id]);
         Storage::disk('public')->assertMissing($path);
     }

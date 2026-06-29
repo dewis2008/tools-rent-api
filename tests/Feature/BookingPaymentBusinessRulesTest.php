@@ -3,7 +3,9 @@
 namespace Tests\Feature;
 
 use App\Models\User;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Modules\Bookings\Models\Booking;
 use Modules\Categories\Models\Category;
 use Modules\LockCodes\Models\LockCode;
@@ -223,6 +225,124 @@ class BookingPaymentBusinessRulesTest extends TestCase
             'deleted_at' => null,
         ]);
         $this->assertDatabaseHas('payments', ['id' => $payment->id]);
+    }
+
+    public function test_tool_and_vendor_with_booking_history_cannot_be_deleted(): void
+    {
+        $customer = User::factory()->create(['role' => 'customer']);
+        $vendor = User::factory()->create(['role' => 'vendor']);
+        $vendorProfile = $this->createVendorProfile($vendor);
+        $booking = $this->createBooking($customer, vendorProfile: $vendorProfile, attributes: [
+            'status' => 'paid',
+        ]);
+        $payment = $this->createPayment($booking, ['status' => 'paid']);
+        $lockCode = LockCode::create([
+            'booking_id' => $booking->id,
+            'code' => '482951',
+            'valid_from' => $booking->start_at,
+            'valid_until' => $booking->end_at,
+        ]);
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        foreach ([$vendor, $admin] as $user) {
+            $token = $user->createToken('test-client')->plainTextToken;
+
+            $this
+                ->withToken($token)
+                ->deleteJson("/api/v1/tools/{$booking->tool_id}")
+                ->assertForbidden();
+
+            $this
+                ->withToken($token)
+                ->deleteJson("/api/v1/vendors/{$vendorProfile->id}")
+                ->assertForbidden();
+        }
+
+        foreach ([$customer, $vendor] as $user) {
+            $this
+                ->withToken($admin->createToken('test-client')->plainTextToken)
+                ->deleteJson("/api/v1/users/{$user->id}")
+                ->assertForbidden();
+        }
+
+        $this->assertDatabaseHas('tools', [
+            'id' => $booking->tool_id,
+            'deleted_at' => null,
+        ]);
+        $this->assertDatabaseHas('vendor_profiles', [
+            'id' => $vendorProfile->id,
+            'deleted_at' => null,
+        ]);
+        $this->assertDatabaseHas('bookings', [
+            'id' => $booking->id,
+            'status' => 'paid',
+            'deleted_at' => null,
+        ]);
+        $this->assertDatabaseHas('payments', ['id' => $payment->id]);
+        $this->assertDatabaseHas('lock_codes', ['id' => $lockCode->id]);
+    }
+
+    public function test_soft_deleted_booking_history_still_prevents_tool_and_vendor_deletion(): void
+    {
+        $customer = User::factory()->create(['role' => 'customer']);
+        $vendor = User::factory()->create(['role' => 'vendor']);
+        $vendorProfile = $this->createVendorProfile($vendor);
+        $booking = $this->createBooking($customer, vendorProfile: $vendorProfile);
+
+        $booking->delete();
+
+        $token = $vendor->createToken('test-client')->plainTextToken;
+
+        $this
+            ->withToken($token)
+            ->deleteJson("/api/v1/tools/{$booking->tool_id}")
+            ->assertForbidden();
+
+        $this
+            ->withToken($token)
+            ->deleteJson("/api/v1/vendors/{$vendorProfile->id}")
+            ->assertForbidden();
+
+        $this->assertSoftDeleted($booking);
+        $this->assertNotSoftDeleted($booking->tool);
+        $this->assertNotSoftDeleted($vendorProfile);
+    }
+
+    public function test_restricted_foreign_keys_protect_paid_audit_records_from_hard_deletes(): void
+    {
+        $customer = User::factory()->create(['role' => 'customer']);
+        $vendorProfile = $this->createVendorProfile(User::factory()->create(['role' => 'vendor']));
+        $booking = $this->createBooking($customer, vendorProfile: $vendorProfile, attributes: [
+            'status' => 'paid',
+        ]);
+        $payment = $this->createPayment($booking, ['status' => 'paid']);
+        $lockCode = LockCode::create([
+            'booking_id' => $booking->id,
+            'code' => '482951',
+            'valid_from' => $booking->start_at,
+            'valid_until' => $booking->end_at,
+        ]);
+
+        foreach ([
+            ['tools', $booking->tool_id],
+            ['vendor_profiles', $vendorProfile->id],
+            ['bookings', $booking->id],
+            ['users', $customer->id],
+            ['users', $vendorProfile->user_id],
+        ] as [$table, $id]) {
+            try {
+                DB::table($table)->where('id', $id)->delete();
+                $this->fail("Expected the {$table} foreign key to restrict deletion.");
+            } catch (QueryException) {
+                $this->addToAssertionCount(1);
+            }
+        }
+
+        $this->assertDatabaseHas('tools', ['id' => $booking->tool_id]);
+        $this->assertDatabaseHas('vendor_profiles', ['id' => $vendorProfile->id]);
+        $this->assertDatabaseHas('bookings', ['id' => $booking->id]);
+        $this->assertDatabaseHas('payments', ['id' => $payment->id]);
+        $this->assertDatabaseHas('lock_codes', ['id' => $lockCode->id]);
     }
 
     public function test_vendor_can_progress_paid_booking_to_active_and_completed(): void
