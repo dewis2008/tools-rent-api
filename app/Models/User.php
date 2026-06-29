@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Database\Factories\UserFactory;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Contracts\Auth\MustVerifyEmail as MustVerifyEmailContract;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
@@ -32,6 +33,10 @@ class User extends Authenticatable implements MustVerifyEmailContract
     protected static function booted(): void
     {
         static::deleting(function (User $user): void {
+            if ($user->hasBookingHistory()) {
+                throw new AuthorizationException(__('Users with booking history cannot be deleted.'));
+            }
+
             app(ToolImageService::class)->deleteFilesForUser($user);
         });
     }
@@ -59,6 +64,21 @@ class User extends Authenticatable implements MustVerifyEmailContract
     public function payments(): HasMany
     {
         return $this->hasMany(Payment::class, 'customer_id');
+    }
+
+    public function hasBookingHistory(): bool
+    {
+        if ($this->customerBookings()->withTrashed()->exists()) {
+            return true;
+        }
+
+        $vendorProfileIds = VendorProfile::withTrashed()
+            ->where('user_id', $this->id)
+            ->select('id');
+
+        return Booking::withTrashed()
+            ->whereIn('vendor_id', $vendorProfileIds)
+            ->exists();
     }
 
     /**

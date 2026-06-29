@@ -3,6 +3,7 @@
 namespace Modules\Vendors\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
@@ -30,7 +31,27 @@ class VendorsController extends Controller
     {
         $this->authorize('create', VendorProfile::class);
 
-        $vendor = VendorProfile::create($request->validated());
+        $validated = $request->validated();
+
+        $vendor = DB::transaction(function () use ($validated): VendorProfile {
+            $vendor = VendorProfile::withTrashed()
+                ->where('user_id', $validated['user_id'])
+                ->lockForUpdate()
+                ->first();
+
+            if (! $vendor) {
+                return VendorProfile::create($validated);
+            }
+
+            $vendor->fill([
+                ...$validated,
+                'verification_status' => 'pending',
+                'rating' => null,
+            ]);
+            $vendor->restore();
+
+            return $vendor;
+        });
 
         return response()->json($vendor->refresh(), Response::HTTP_CREATED);
     }
@@ -93,6 +114,12 @@ class VendorsController extends Controller
         $this->authorize('delete', $vendor);
 
         DB::transaction(function () use ($vendor): void {
+            $vendor = VendorProfile::query()->lockForUpdate()->findOrFail($vendor->id);
+
+            if ($vendor->hasBookingHistory()) {
+                throw new AuthorizationException(__('Vendors with booking history cannot be deleted.'));
+            }
+
             $user = $vendor->user()->first();
 
             $vendor->delete();

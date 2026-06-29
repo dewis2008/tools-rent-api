@@ -50,7 +50,8 @@ class VendorProfilePolicy
 
     public function delete(User $user, VendorProfile $vendorProfile): bool
     {
-        return $this->ownsProfile($user, $vendorProfile);
+        return $this->ownsProfile($user, $vendorProfile)
+            && ! $vendorProfile->hasBookingHistory();
     }
 
     private function ownsProfile(User $user, VendorProfile $vendorProfile): bool
