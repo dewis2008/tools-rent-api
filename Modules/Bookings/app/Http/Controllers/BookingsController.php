@@ -55,11 +55,11 @@ class BookingsController extends Controller
         return response()->json($booking->refresh()->load(['tool', 'customer', 'vendor', 'payment', 'lockCode']));
     }
 
-    public function destroy(Booking $booking): Response
+    public function destroy(Booking $booking, BookingService $bookings): Response
     {
         $this->authorize('delete', $booking);
 
-        $booking->delete();
+        $bookings->delete($booking);
 
         return response()->noContent();
     }

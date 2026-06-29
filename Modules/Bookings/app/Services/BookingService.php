@@ -3,6 +3,7 @@
 namespace Modules\Bookings\Services;
 
 use App\Models\User;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -81,6 +82,19 @@ class BookingService
             $booking->update(['status' => $status]);
 
             return $booking;
+        });
+    }
+
+    public function delete(Booking $booking): void
+    {
+        DB::transaction(function () use ($booking): void {
+            $booking = Booking::query()->lockForUpdate()->findOrFail($booking->id);
+
+            if (! $booking->isSafelyDeletable()) {
+                throw new AuthorizationException(__('Only pending bookings without payment or lock-code records can be deleted.'));
+            }
+
+            $booking->delete();
         });
     }
 
