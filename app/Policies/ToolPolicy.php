@@ -22,7 +22,7 @@ class ToolPolicy
 
     public function create(User $user): bool
     {
-        return $user->role === 'vendor' && $user->vendorProfile()->exists();
+        return $user->role === 'vendor' && $this->hasApprovedVendorProfile($user);
     }
 
     public function update(User $user, Tool $tool): bool

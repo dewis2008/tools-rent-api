@@ -65,6 +65,24 @@ class AuthorizationTest extends TestCase
             ->assertForbidden();
     }
 
+    public function test_vendor_cannot_create_tools_before_profile_approval(): void
+    {
+        $vendor = User::factory()->vendor()->create();
+        $vendorProfile = VendorProfile::create([
+            'user_id' => $vendor->id,
+            'business_name' => 'Pending Rentals',
+            'verification_status' => 'pending',
+        ]);
+        $category = Category::create(['name' => 'Drills', 'slug' => 'drills']);
+
+        $this
+            ->withToken($vendor->createToken('test-client')->plainTextToken)
+            ->postJson('/api/v1/tools', $this->toolPayload($vendorProfile, $category))
+            ->assertForbidden();
+
+        $this->assertDatabaseCount('tools', 0);
+    }
+
     public function test_vendor_cannot_set_tool_status_on_create(): void
     {
         $vendor = User::factory()->create(['role' => 'vendor']);
@@ -298,6 +316,7 @@ class AuthorizationTest extends TestCase
         return VendorProfile::create([
             'user_id' => $user->id,
             'business_name' => "{$user->name} Rentals",
+            'verification_status' => 'approved',
         ]);
     }
 

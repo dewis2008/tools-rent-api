@@ -12,7 +12,7 @@ class EnsureUserIsActive
     {
         $user = $request->user();
 
-        if (! $user || $user->status !== 'active') {
+        if (! $user || $user->status !== 'active' || ! $user->hasVerifiedEmail()) {
             return response()->json([
                 'message' => __('Your account is not active.'),
             ], Response::HTTP_FORBIDDEN);

@@ -4,6 +4,7 @@ namespace Modules\Users\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use Illuminate\Auth\Events\Registered;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Response;
 use Modules\Users\Http\Requests\StoreUserRequest;
@@ -24,6 +25,8 @@ class UsersController extends Controller
 
         $user = User::create($request->validated());
 
+        event(new Registered($user));
+
         return response()->json($user, Response::HTTP_CREATED);
     }
 
@@ -39,11 +42,22 @@ class UsersController extends Controller
         $this->authorize('update', $user);
 
         $validated = $request->validated();
+        $emailChanged = array_key_exists('email', $validated)
+            && $validated['email'] !== $user->email;
 
-        $user->update($validated);
+        if ($emailChanged) {
+            $user->forceFill(['email_verified_at' => null]);
+        }
 
-        if (array_key_exists('status', $validated) && $validated['status'] !== 'active') {
+        $user->fill($validated)->save();
+
+        if ($emailChanged
+            || (array_key_exists('status', $validated) && $validated['status'] !== 'active')) {
             $user->tokens()->delete();
+        }
+
+        if ($emailChanged) {
+            $user->sendEmailVerificationNotification();
         }
 
         return response()->json($user->refresh());

@@ -11,7 +11,9 @@ use App\Policies\ToolImagePolicy;
 use App\Policies\ToolPolicy;
 use App\Policies\UserPolicy;
 use App\Policies\VendorProfilePolicy;
+use Illuminate\Auth\Notifications\VerifyEmail;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
 use Modules\Bookings\Models\Booking;
 use Modules\Categories\Models\Category;
@@ -36,6 +38,15 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        VerifyEmail::createUrlUsing(fn (User $user): string => URL::temporarySignedRoute(
+            'api.verification.verify',
+            now()->addMinutes((int) config('auth.verification.expire', 60)),
+            [
+                'id' => $user->getKey(),
+                'hash' => sha1($user->getEmailForVerification()),
+            ],
+        ));
+
         Gate::policy(Booking::class, BookingPolicy::class);
         Gate::policy(Category::class, CategoryPolicy::class);
         Gate::policy(LockCode::class, LockCodePolicy::class);

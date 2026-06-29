@@ -25,6 +25,16 @@ trait HandlesRentalAuthorization
             return false;
         }
 
-        return $user->vendorProfile()->whereKey($vendorId)->exists();
+        return $user->vendorProfile()
+            ->whereKey($vendorId)
+            ->where('verification_status', 'approved')
+            ->exists();
+    }
+
+    protected function hasApprovedVendorProfile(User $user): bool
+    {
+        return $user->vendorProfile()
+            ->where('verification_status', 'approved')
+            ->exists();
     }
 }

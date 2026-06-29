@@ -12,7 +12,8 @@ class PaymentPolicy
 
     public function viewAny(User $user): bool
     {
-        return in_array($user->role, ['vendor', 'customer'], true);
+        return $user->role === 'customer'
+            || ($user->role === 'vendor' && $this->hasApprovedVendorProfile($user));
     }
 
     public function view(User $user, Payment $payment): bool

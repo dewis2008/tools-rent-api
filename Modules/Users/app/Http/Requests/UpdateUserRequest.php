@@ -4,6 +4,7 @@ namespace Modules\Users\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Validator;
 
 class UpdateUserRequest extends FormRequest
 {
@@ -34,5 +35,40 @@ class UpdateUserRequest extends FormRequest
         }
 
         return $user->role === 'admin' || ! $this->hasAny(['role', 'status']);
+    }
+
+    /** @return array<int, callable> */
+    public function after(): array
+    {
+        return [
+            function (Validator $validator): void {
+                if (! $this->hasAny(['role', 'status'])) {
+                    return;
+                }
+
+                $user = $this->route('user');
+                $status = $this->input('status', $user->status);
+                $role = $this->input('role', $user->role);
+
+                if ($status !== 'active') {
+                    return;
+                }
+
+                if ($role === 'vendor') {
+                    $errorField = $this->has('status') ? 'status' : 'role';
+
+                    $validator->errors()->add(
+                        $errorField,
+                        __('Vendors must be activated by approving their vendor profile.'),
+                    );
+
+                    return;
+                }
+
+                if ($this->has('status') && ! $user->hasVerifiedEmail()) {
+                    $validator->errors()->add('status', __('The email address must be verified before activation.'));
+                }
+            },
+        ];
     }
 }
