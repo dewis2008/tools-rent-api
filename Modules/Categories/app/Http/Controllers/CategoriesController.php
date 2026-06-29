@@ -3,11 +3,13 @@
 namespace Modules\Categories\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Response;
 use Modules\Categories\Http\Requests\StoreCategoryRequest;
 use Modules\Categories\Http\Requests\UpdateCategoryRequest;
 use Modules\Categories\Models\Category;
+use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 
 class CategoriesController extends Controller
 {
@@ -47,7 +49,20 @@ class CategoriesController extends Controller
     {
         $this->authorize('delete', $category);
 
-        $category->delete();
+        try {
+            $category->delete();
+        } catch (QueryException $exception) {
+            $sqlState = $exception->errorInfo[0] ?? $exception->getCode();
+
+            if (! str_starts_with((string) $sqlState, '23')) {
+                throw $exception;
+            }
+
+            throw new ConflictHttpException(
+                __('Categories assigned to tools cannot be deleted.'),
+                $exception,
+            );
+        }
 
         return response()->noContent();
     }
