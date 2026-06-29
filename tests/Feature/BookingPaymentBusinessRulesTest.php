@@ -352,6 +352,7 @@ class BookingPaymentBusinessRulesTest extends TestCase
         $booking = $this->createBooking(User::factory()->create(['role' => 'customer']), vendorProfile: $vendorProfile, attributes: [
             'status' => 'paid',
         ]);
+        $this->createPayment($booking, ['status' => 'paid']);
         $token = $vendor->createToken('test-client')->plainTextToken;
 
         $this
@@ -365,6 +366,70 @@ class BookingPaymentBusinessRulesTest extends TestCase
             ->patchJson("/api/v1/bookings/{$booking->id}", ['status' => 'completed'])
             ->assertOk()
             ->assertJsonPath('status', 'completed');
+    }
+
+    public function test_vendor_cancelling_paid_booking_refunds_payment(): void
+    {
+        $vendor = User::factory()->create(['role' => 'vendor']);
+        $vendorProfile = $this->createVendorProfile($vendor);
+        $booking = $this->createBooking(User::factory()->create(['role' => 'customer']), vendorProfile: $vendorProfile, attributes: [
+            'status' => 'paid',
+        ]);
+        $payment = $this->createPayment($booking, ['status' => 'paid']);
+
+        $this
+            ->withToken($vendor->createToken('test-client')->plainTextToken)
+            ->patchJson("/api/v1/bookings/{$booking->id}", ['status' => 'cancelled'])
+            ->assertOk()
+            ->assertJsonPath('status', 'cancelled')
+            ->assertJsonPath('payment.status', 'refunded');
+
+        $this->assertSame('cancelled', $booking->refresh()->status);
+        $this->assertSame('refunded', $payment->refresh()->status);
+    }
+
+    public function test_refunding_payment_cancels_booking_and_prevents_activation(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $vendor = User::factory()->create(['role' => 'vendor']);
+        $vendorProfile = $this->createVendorProfile($vendor);
+        $booking = $this->createBooking(User::factory()->create(['role' => 'customer']), vendorProfile: $vendorProfile, attributes: [
+            'status' => 'paid',
+        ]);
+        $payment = $this->createPayment($booking, ['status' => 'paid']);
+
+        $this
+            ->withToken($admin->createToken('test-client')->plainTextToken)
+            ->patchJson("/api/v1/payments/{$payment->id}", ['status' => 'refunded'])
+            ->assertOk()
+            ->assertJsonPath('status', 'refunded')
+            ->assertJsonPath('booking.status', 'cancelled');
+
+        $this
+            ->withToken($vendor->createToken('test-client')->plainTextToken)
+            ->patchJson("/api/v1/bookings/{$booking->id}", ['status' => 'active'])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('status');
+
+        $this->assertSame('cancelled', $booking->refresh()->status);
+        $this->assertSame('refunded', $payment->refresh()->status);
+    }
+
+    public function test_booking_requires_paid_payment_before_activation(): void
+    {
+        $vendor = User::factory()->create(['role' => 'vendor']);
+        $vendorProfile = $this->createVendorProfile($vendor);
+        $booking = $this->createBooking(User::factory()->create(['role' => 'customer']), vendorProfile: $vendorProfile, attributes: [
+            'status' => 'paid',
+        ]);
+
+        $this
+            ->withToken($vendor->createToken('test-client')->plainTextToken)
+            ->patchJson("/api/v1/bookings/{$booking->id}", ['status' => 'active'])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('status');
+
+        $this->assertSame('paid', $booking->refresh()->status);
     }
 
     public function test_customer_cannot_pay_another_customers_booking(): void
