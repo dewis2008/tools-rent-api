@@ -24,11 +24,16 @@ class LockCodePolicy
 
     public function reveal(User $user, LockCode $lockCode): bool
     {
-        if ($this->ownsVendorProfile($user, $lockCode->booking?->vendor_id)) {
-            return true;
+        $booking = $lockCode->booking;
+
+        if (! $booking) {
+            return false;
         }
 
-        if ($lockCode->booking?->customer_id !== $user->id) {
+        $canAccessBooking = $booking->customer_id === $user->id
+            || $this->ownsVendorProfile($user, $booking->vendor_id);
+
+        if (! $canAccessBooking) {
             return false;
         }
 
@@ -38,7 +43,8 @@ class LockCodePolicy
 
         $now = now();
 
-        return $lockCode->valid_from->lte($now)
+        return $booking->isRentalActiveAt($now)
+            && $lockCode->valid_from->lte($now)
             && $lockCode->valid_until->gte($now);
     }
 

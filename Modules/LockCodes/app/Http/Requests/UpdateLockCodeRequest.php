@@ -7,9 +7,12 @@ use Illuminate\Support\Carbon;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
 use Modules\Bookings\Models\Booking;
+use Modules\LockCodes\Http\Requests\Concerns\ValidatesLockCodeConfiguration;
 
 class UpdateLockCodeRequest extends FormRequest
 {
+    use ValidatesLockCodeConfiguration;
+
     public function rules(): array
     {
         return [
@@ -32,15 +35,23 @@ class UpdateLockCodeRequest extends FormRequest
     {
         return [
             function (Validator $validator): void {
-                if (! $this->hasAny(['valid_from', 'valid_until'])) {
+                if (! $this->hasAny(['booking_id', 'valid_from', 'valid_until', 'status'])) {
                     return;
                 }
 
-                if ($validator->errors()->has('valid_from') || $validator->errors()->has('valid_until')) {
+                if ($validator->errors()->hasAny(['booking_id', 'valid_from', 'valid_until', 'status'])) {
                     return;
                 }
 
                 $lockCode = $this->route('lockCode');
+                $booking = $this->has('booking_id')
+                    ? Booking::query()->find($this->input('booking_id'))
+                    : $lockCode->booking;
+
+                if (! $booking) {
+                    return;
+                }
+
                 $validFrom = $this->has('valid_from')
                     ? Carbon::parse($this->input('valid_from'))
                     : $lockCode->valid_from;
@@ -48,15 +59,23 @@ class UpdateLockCodeRequest extends FormRequest
                     ? Carbon::parse($this->input('valid_until'))
                     : $lockCode->valid_until;
 
-                if ($validUntil->gt($validFrom)) {
+                if (! $validUntil->gt($validFrom)) {
+                    $errorField = $this->has('valid_until') ? 'valid_until' : 'valid_from';
+
+                    $validator->errors()->add(
+                        $errorField,
+                        __('The lock code validity end must be after its validity start.'),
+                    );
+
                     return;
                 }
 
-                $errorField = $this->has('valid_until') ? 'valid_until' : 'valid_from';
-
-                $validator->errors()->add(
-                    $errorField,
-                    __('The lock code validity end must be after its validity start.'),
+                $this->validateLockCodeConfiguration(
+                    $validator,
+                    $booking,
+                    $validFrom,
+                    $validUntil,
+                    (string) $this->input('status', $lockCode->status),
                 );
             },
         ];
