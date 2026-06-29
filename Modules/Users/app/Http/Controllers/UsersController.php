@@ -43,16 +43,22 @@ class UsersController extends Controller
         $this->authorize('update', $user);
 
         $validated = $request->validated();
-        $emailChanged = array_key_exists('email', $validated)
-            && $validated['email'] !== $user->email;
+        $user->fill($validated);
+
+        $emailChanged = $user->isDirty('email');
+        $authenticationOrAuthorizationChanged = $user->isDirty([
+            'email',
+            'password',
+            'role',
+        ]);
 
         if ($emailChanged) {
             $user->forceFill(['email_verified_at' => null]);
         }
 
-        $user->fill($validated)->save();
+        $user->save();
 
-        if ($emailChanged
+        if ($authenticationOrAuthorizationChanged
             || (array_key_exists('status', $validated) && $validated['status'] !== 'active')) {
             $user->tokens()->delete();
         }
