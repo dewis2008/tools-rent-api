@@ -122,6 +122,40 @@ class LockCodeSecurityTest extends TestCase
             ->assertJsonPath('code', '123456');
     }
 
+    public function test_partial_lock_code_updates_preserve_valid_interval(): void
+    {
+        [$vendor, $booking] = $this->createVendorBooking();
+        $validFrom = now()->addDay()->startOfSecond();
+        $validUntil = $validFrom->copy()->addDay();
+        $lockCode = LockCode::factory()->create([
+            'booking_id' => $booking->id,
+            'valid_from' => $validFrom,
+            'valid_until' => $validUntil,
+        ]);
+        $token = $vendor->createToken('test-client')->plainTextToken;
+
+        $this
+            ->withToken($token)
+            ->patchJson("/api/v1/lock-codes/{$lockCode->id}", [
+                'valid_from' => $validUntil->copy()->addMinute()->toDateTimeString(),
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('valid_from');
+
+        $this
+            ->withToken($token)
+            ->patchJson("/api/v1/lock-codes/{$lockCode->id}", [
+                'valid_until' => $validFrom->copy()->subMinute()->toDateTimeString(),
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('valid_until');
+
+        $lockCode->refresh();
+
+        $this->assertTrue($lockCode->valid_from->equalTo($validFrom));
+        $this->assertTrue($lockCode->valid_until->equalTo($validUntil));
+    }
+
     private function createVendorBooking(): array
     {
         $vendor = User::factory()->vendor()->create();

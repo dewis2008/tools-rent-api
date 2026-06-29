@@ -3,7 +3,9 @@
 namespace Modules\LockCodes\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Carbon;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Validator;
 use Modules\Bookings\Models\Booking;
 
 class UpdateLockCodeRequest extends FormRequest
@@ -22,6 +24,41 @@ class UpdateLockCodeRequest extends FormRequest
             'valid_from' => ['sometimes', 'required', 'date'],
             'valid_until' => ['sometimes', 'required', 'date'],
             'status' => ['sometimes', 'required', 'in:generated,sent,active,expired,revoked'],
+        ];
+    }
+
+    /** @return array<int, callable> */
+    public function after(): array
+    {
+        return [
+            function (Validator $validator): void {
+                if (! $this->hasAny(['valid_from', 'valid_until'])) {
+                    return;
+                }
+
+                if ($validator->errors()->has('valid_from') || $validator->errors()->has('valid_until')) {
+                    return;
+                }
+
+                $lockCode = $this->route('lockCode');
+                $validFrom = $this->has('valid_from')
+                    ? Carbon::parse($this->input('valid_from'))
+                    : $lockCode->valid_from;
+                $validUntil = $this->has('valid_until')
+                    ? Carbon::parse($this->input('valid_until'))
+                    : $lockCode->valid_until;
+
+                if ($validUntil->gt($validFrom)) {
+                    return;
+                }
+
+                $errorField = $this->has('valid_until') ? 'valid_until' : 'valid_from';
+
+                $validator->errors()->add(
+                    $errorField,
+                    __('The lock code validity end must be after its validity start.'),
+                );
+            },
         ];
     }
 
