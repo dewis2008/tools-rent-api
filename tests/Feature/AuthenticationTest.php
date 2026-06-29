@@ -8,6 +8,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\URL;
 use Laravel\Sanctum\PersonalAccessToken;
+use Modules\Tools\Models\Tool;
 use Modules\Vendors\Models\VendorProfile;
 use Tests\TestCase;
 
@@ -320,6 +321,38 @@ class AuthenticationTest extends TestCase
         $this->assertSame('active', $newVendor->refresh()->status);
         $this->assertSame(0, $newVendor->tokens()->count());
         $this->assertSame(1, $admin->tokens()->count());
+    }
+
+    public function test_rejecting_vendor_deactivates_active_tools(): void
+    {
+        $vendor = User::factory()->vendor()->create();
+        $profile = VendorProfile::factory()->create([
+            'user_id' => $vendor->id,
+            'verification_status' => 'approved',
+        ]);
+        $activeTool = Tool::factory()->create([
+            'vendor_id' => $profile->id,
+            'status' => 'active',
+        ]);
+        $inactiveTool = Tool::factory()->create([
+            'vendor_id' => $profile->id,
+            'status' => 'inactive',
+        ]);
+        $vendor->createToken('vendor-client');
+        $admin = User::factory()->admin()->create();
+
+        $this
+            ->withToken($admin->createToken('admin-client')->plainTextToken)
+            ->patchJson("/api/v1/vendors/{$profile->id}", [
+                'verification_status' => 'rejected',
+            ])
+            ->assertOk()
+            ->assertJsonPath('verification_status', 'rejected');
+
+        $this->assertSame('blocked', $vendor->refresh()->status);
+        $this->assertSame(0, $vendor->tokens()->count());
+        $this->assertSame('inactive', $activeTool->refresh()->status);
+        $this->assertSame('inactive', $inactiveTool->refresh()->status);
     }
 
     public function test_admin_cannot_bypass_vendor_profile_approval(): void

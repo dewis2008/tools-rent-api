@@ -55,6 +55,13 @@ class VendorsController extends Controller
                 ? $vendor->user()->first()
                 : null;
 
+            if (array_key_exists('verification_status', $validated)
+                && $validated['verification_status'] !== 'approved') {
+                $vendor->tools()
+                    ->where('status', 'active')
+                    ->update(['status' => 'inactive']);
+            }
+
             $vendor->update($validated);
 
             if (! $ownerOrStatusChanged) {

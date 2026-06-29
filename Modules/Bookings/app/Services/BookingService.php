@@ -28,6 +28,7 @@ class BookingService
             $tool = Tool::query()->lockForUpdate()->findOrFail($validated['tool_id']);
 
             $this->ensureToolIsActive($tool);
+            $this->ensureVendorIsApproved($tool);
 
             $startAt = Carbon::parse($validated['start_at']);
             $endAt = Carbon::parse($validated['end_at']);
@@ -140,6 +141,17 @@ class BookingService
                 'start_at' => __('The selected tool is not available for this period.'),
             ]);
         }
+    }
+
+    private function ensureVendorIsApproved(Tool $tool): void
+    {
+        if ($tool->vendor()->where('verification_status', 'approved')->exists()) {
+            return;
+        }
+
+        throw ValidationException::withMessages([
+            'tool_id' => __('The selected tool is not available for booking.'),
+        ]);
     }
 
     private function canTransition(Booking $booking, string $status, User $user): bool
