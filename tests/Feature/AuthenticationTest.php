@@ -658,6 +658,57 @@ class AuthenticationTest extends TestCase
         Notification::assertSentToTimes($user, VerifyEmail::class, 1);
     }
 
+    public function test_updating_password_revokes_existing_tokens(): void
+    {
+        $admin = User::factory()->admin()->create();
+        $user = User::factory()->create();
+        $adminToken = $admin->createToken('admin-client')->plainTextToken;
+        $userToken = $user->createToken('test-client')->plainTextToken;
+
+        $this
+            ->withToken($adminToken)
+            ->patchJson("/api/v1/users/{$user->id}", [
+                'password' => 'new-password',
+            ])
+            ->assertOk();
+
+        $this->assertSame(0, $user->tokens()->count());
+        $this->assertSame(1, $admin->tokens()->count());
+
+        app('auth')->forgetGuards();
+
+        $this->withToken($userToken)
+            ->getJson('/api/user')
+            ->assertUnauthorized();
+    }
+
+    public function test_updating_role_revokes_existing_tokens(): void
+    {
+        $admin = User::factory()->admin()->create();
+        $user = User::factory()->create([
+            'role' => 'customer',
+        ]);
+        $adminToken = $admin->createToken('admin-client')->plainTextToken;
+        $userToken = $user->createToken('test-client')->plainTextToken;
+
+        $this
+            ->withToken($adminToken)
+            ->patchJson("/api/v1/users/{$user->id}", [
+                'role' => 'admin',
+            ])
+            ->assertOk()
+            ->assertJsonPath('role', 'admin');
+
+        $this->assertSame(0, $user->tokens()->count());
+        $this->assertSame(1, $admin->tokens()->count());
+
+        app('auth')->forgetGuards();
+
+        $this->withToken($userToken)
+            ->getJson('/api/user')
+            ->assertUnauthorized();
+    }
+
     public function test_user_can_access_protected_api_with_bearer_token(): void
     {
         $user = User::factory()->create();
