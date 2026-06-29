@@ -211,6 +211,40 @@ class AuthorizationTest extends TestCase
             ->assertForbidden();
     }
 
+    public function test_customer_only_sees_active_tools(): void
+    {
+        $customer = User::factory()->create(['role' => 'customer']);
+        $vendorProfile = $this->createVendorProfile(User::factory()->create(['role' => 'vendor']));
+        $category = Category::create(['name' => 'Drills', 'slug' => 'drills']);
+        $activeTool = $this->createTool($vendorProfile, $category);
+        $activeTool->update(['status' => 'active']);
+
+        foreach (['pending', 'inactive', 'rejected'] as $status) {
+            $tool = $this->createTool($vendorProfile, $category);
+            $tool->update(['status' => $status]);
+        }
+
+        $this
+            ->withToken($customer->createToken('test-client')->plainTextToken)
+            ->getJson('/api/v1/tools')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $activeTool->id);
+    }
+
+    public function test_customer_cannot_view_non_active_tool(): void
+    {
+        $customer = User::factory()->create(['role' => 'customer']);
+        $vendorProfile = $this->createVendorProfile(User::factory()->create(['role' => 'vendor']));
+        $category = Category::create(['name' => 'Drills', 'slug' => 'drills']);
+        $tool = $this->createTool($vendorProfile, $category);
+
+        $this
+            ->withToken($customer->createToken('test-client')->plainTextToken)
+            ->getJson("/api/v1/tools/{$tool->id}")
+            ->assertForbidden();
+    }
+
     public function test_customer_cannot_view_another_customers_booking(): void
     {
         $customer = User::factory()->create(['role' => 'customer']);

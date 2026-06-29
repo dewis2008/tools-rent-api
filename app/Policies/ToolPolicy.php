@@ -17,6 +17,10 @@ class ToolPolicy
 
     public function view(User $user, Tool $tool): bool
     {
+        if ($user->role === 'customer') {
+            return $tool->status === 'active';
+        }
+
         return true;
     }
 

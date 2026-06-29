@@ -15,7 +15,13 @@ class ToolsController extends Controller
     {
         $this->authorize('viewAny', Tool::class);
 
-        return response()->json(Tool::query()->with(['vendor', 'category'])->latest()->paginate());
+        $query = Tool::query()->with(['vendor', 'category'])->latest();
+
+        if (request()->user()->role === 'customer') {
+            $query->where('status', 'active');
+        }
+
+        return response()->json($query->paginate());
     }
 
     public function store(StoreToolRequest $request): JsonResponse

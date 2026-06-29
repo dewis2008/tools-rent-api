@@ -25,6 +25,9 @@ class BookingService
     {
         return DB::transaction(function () use ($validated, $user): Booking {
             $tool = Tool::query()->lockForUpdate()->findOrFail($validated['tool_id']);
+
+            $this->ensureToolIsActive($tool);
+
             $startAt = Carbon::parse($validated['start_at']);
             $endAt = Carbon::parse($validated['end_at']);
 
@@ -95,6 +98,17 @@ class BookingService
         $hours = $startAt->diffInHours($endAt);
 
         return max(1, (int) ceil($hours / 24));
+    }
+
+    private function ensureToolIsActive(Tool $tool): void
+    {
+        if ($tool->status === 'active') {
+            return;
+        }
+
+        throw ValidationException::withMessages([
+            'tool_id' => __('The selected tool is not available for booking.'),
+        ]);
     }
 
     private function ensureToolIsAvailable(int $toolId, Carbon $startAt, Carbon $endAt): void
