@@ -77,7 +77,7 @@ class LockCodesController extends Controller
     {
         $this->authorize('delete', $lockCode);
 
-        $lockCode->delete();
+        $lockCode->update(['status' => 'revoked']);
 
         return response()->noContent();
     }
