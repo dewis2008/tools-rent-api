@@ -86,8 +86,10 @@ class LockCodeSecurityTest extends TestCase
 
         $this
             ->withToken($customer->createToken('test-client')->plainTextToken)
-            ->getJson("/api/v1/lock-codes/{$lockCode->id}/reveal")
+            ->postJson("/api/v1/lock-codes/{$lockCode->id}/reveal")
             ->assertOk()
+            ->assertHeader('Cache-Control', 'no-store, private')
+            ->assertHeader('Pragma', 'no-cache')
             ->assertJsonPath('code', '123456');
     }
 
@@ -104,7 +106,7 @@ class LockCodeSecurityTest extends TestCase
 
         $this
             ->withToken($customer->createToken('test-client')->plainTextToken)
-            ->getJson("/api/v1/lock-codes/{$lockCode->id}/reveal")
+            ->postJson("/api/v1/lock-codes/{$lockCode->id}/reveal")
             ->assertForbidden();
     }
 
@@ -122,8 +124,9 @@ class LockCodeSecurityTest extends TestCase
 
         $this
             ->withToken($vendor->createToken('test-client')->plainTextToken)
-            ->getJson("/api/v1/lock-codes/{$lockCode->id}/reveal")
+            ->postJson("/api/v1/lock-codes/{$lockCode->id}/reveal")
             ->assertOk()
+            ->assertHeader('Cache-Control', 'no-store, private')
             ->assertJsonPath('code', '123456');
     }
 
@@ -150,7 +153,7 @@ class LockCodeSecurityTest extends TestCase
 
         $this
             ->withToken($vendor->createToken('test-client')->plainTextToken)
-            ->getJson("/api/v1/lock-codes/{$lockCode->id}/reveal")
+            ->postJson("/api/v1/lock-codes/{$lockCode->id}/reveal")
             ->assertForbidden();
     }
 

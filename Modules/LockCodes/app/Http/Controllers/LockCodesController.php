@@ -5,7 +5,6 @@ namespace Modules\LockCodes\Http\Controllers;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Response;
-use Illuminate\Support\Facades\Log;
 use Modules\LockCodes\Http\Requests\StoreLockCodeRequest;
 use Modules\LockCodes\Http\Requests\UpdateLockCodeRequest;
 use Modules\LockCodes\Models\LockCode;
@@ -45,24 +44,6 @@ class LockCodesController extends Controller
         $this->authorize('view', $lockCode);
 
         return response()->json($lockCode->load('booking'));
-    }
-
-    public function reveal(LockCode $lockCode): JsonResponse
-    {
-        $this->authorize('reveal', $lockCode);
-
-        $user = request()->user();
-
-        Log::info('Lock code revealed.', [
-            'lock_code_id' => $lockCode->id,
-            'booking_id' => $lockCode->booking_id,
-            'user_id' => $user?->id,
-            'user_role' => $user?->role,
-        ]);
-
-        return response()->json([
-            'code' => $lockCode->code,
-        ]);
     }
 
     public function update(
