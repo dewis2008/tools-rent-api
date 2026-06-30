@@ -20,7 +20,7 @@ class UpdateLockCodeRequest extends FormRequest
                 'sometimes',
                 'required',
                 'integer',
-                'exists:bookings,id',
+                Rule::exists('bookings', 'id')->withoutTrashed(),
                 Rule::unique('lock_codes', 'booking_id')->ignore($this->route('lockCode')),
             ],
             'code' => ['sometimes', 'required', 'string', 'max:20'],

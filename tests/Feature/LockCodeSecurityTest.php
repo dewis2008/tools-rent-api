@@ -289,6 +289,41 @@ class LockCodeSecurityTest extends TestCase
             ->assertJsonValidationErrors('booking_id');
     }
 
+    public function test_vendor_cannot_attach_lock_codes_to_another_vendors_soft_deleted_booking(): void
+    {
+        [, $archivedBooking] = $this->createVendorBooking();
+        $archivedBooking->update(['status' => 'pending']);
+        $archivedBooking->delete();
+
+        [$vendor, $booking] = $this->createVendorBooking();
+        $lockCode = LockCode::factory()->create([
+            'booking_id' => $booking->id,
+        ]);
+        $token = $vendor->createToken('test-client')->plainTextToken;
+
+        $this
+            ->withToken($token)
+            ->postJson('/api/v1/lock-codes', [
+                'booking_id' => $archivedBooking->id,
+                'code' => '123456',
+                'valid_from' => $archivedBooking->start_at->toDateTimeString(),
+                'valid_until' => $archivedBooking->end_at->toDateTimeString(),
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('booking_id');
+
+        $this
+            ->withToken($token)
+            ->patchJson("/api/v1/lock-codes/{$lockCode->id}", [
+                'booking_id' => $archivedBooking->id,
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('booking_id');
+
+        $this->assertSame($booking->id, $lockCode->refresh()->booking_id);
+        $this->assertDatabaseCount('lock_codes', 1);
+    }
+
     /** @return array<string, array{0: string, 1: bool}> */
     public static function ineligibleBookingProvider(): array
     {
