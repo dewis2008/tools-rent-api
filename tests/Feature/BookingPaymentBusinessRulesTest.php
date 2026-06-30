@@ -54,6 +54,47 @@ class BookingPaymentBusinessRulesTest extends TestCase
         $this->assertNotNull($response->json('expires_at'));
     }
 
+    public function test_admin_can_create_booking_only_for_eligible_customer(): void
+    {
+        $admin = User::factory()->admin()->create();
+        $tool = Tool::factory()->create();
+        $token = $admin->createToken('test-client')->plainTextToken;
+        $startAt = now()->addDay();
+        $payload = [
+            'tool_id' => $tool->id,
+            'start_at' => $startAt->toDateTimeString(),
+            'end_at' => $startAt->copy()->addDay()->toDateTimeString(),
+        ];
+        $ineligibleCustomers = [
+            User::factory()->admin()->create(),
+            User::factory()->vendor()->create(),
+            User::factory()->customer()->blocked()->create(),
+            User::factory()->customer()->unverified()->create(),
+        ];
+
+        foreach ($ineligibleCustomers as $customer) {
+            $this
+                ->withToken($token)
+                ->postJson('/api/v1/bookings', [
+                    ...$payload,
+                    'customer_id' => $customer->id,
+                ])
+                ->assertUnprocessable()
+                ->assertJsonValidationErrors('customer_id');
+        }
+
+        $customer = User::factory()->customer()->create();
+
+        $this
+            ->withToken($token)
+            ->postJson('/api/v1/bookings', [
+                ...$payload,
+                'customer_id' => $customer->id,
+            ])
+            ->assertCreated()
+            ->assertJsonPath('customer_id', $customer->id);
+    }
+
     public function test_customer_cannot_book_non_active_tool(): void
     {
         $customer = User::factory()->create(['role' => 'customer']);

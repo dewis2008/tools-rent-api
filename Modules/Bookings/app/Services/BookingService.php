@@ -22,9 +22,9 @@ class BookingService
     public function create(array $validated, User $user): Booking
     {
         return DB::transaction(function () use ($validated, $user): Booking {
-            $customerId = $this->customerId($validated, $user);
+            $customer = $this->customer($validated, $user);
 
-            $this->ensureCustomerMayBook($customerId);
+            $this->ensureCustomerMayBook($customer->id);
 
             $tool = Tool::query()->lockForUpdate()->findOrFail($validated['tool_id']);
 
@@ -54,7 +54,7 @@ class BookingService
 
             return Booking::create([
                 'tool_id' => $tool->id,
-                'customer_id' => $customerId,
+                'customer_id' => $customer->id,
                 'vendor_id' => $tool->vendor_id,
                 'start_at' => $startAt,
                 'end_at' => $endAt,
@@ -91,13 +91,22 @@ class BookingService
             ->update(['status' => 'cancelled']);
     }
 
-    private function customerId(array $validated, User $user): int
+    private function customer(array $validated, User $user): User
     {
-        if ($user->role === 'admin') {
-            return (int) $validated['customer_id'];
+        $customerId = $user->role === 'admin'
+            ? (int) $validated['customer_id']
+            : $user->id;
+        $customer = User::query()->lockForUpdate()->findOrFail($customerId);
+
+        if ($customer->role === 'customer'
+            && $customer->status === 'active'
+            && $customer->hasVerifiedEmail()) {
+            return $customer;
         }
 
-        return $user->id;
+        throw ValidationException::withMessages([
+            'customer_id' => __('The selected customer is not eligible to make bookings.'),
+        ]);
     }
 
     private function rentalDays(Carbon $startAt, Carbon $endAt): int
@@ -175,8 +184,6 @@ class BookingService
 
     private function ensureCustomerMayBook(int $customerId): void
     {
-        User::query()->lockForUpdate()->findOrFail($customerId);
-
         $pendingBookings = Booking::query()
             ->where('customer_id', $customerId)
             ->where('status', 'pending')
