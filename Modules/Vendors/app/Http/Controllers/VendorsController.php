@@ -3,6 +3,7 @@
 namespace Modules\Vendors\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Models\User;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Response;
@@ -13,6 +14,12 @@ use Modules\Vendors\Models\VendorProfile;
 
 class VendorsController extends Controller
 {
+    private const VerificationFields = [
+        'business_name',
+        'company_code',
+        'vat_code',
+    ];
+
     public function index(): JsonResponse
     {
         $this->authorize('viewAny', VendorProfile::class);
@@ -68,12 +75,28 @@ class VendorsController extends Controller
         $this->authorize('update', $vendor);
 
         $validated = $request->validated();
+        $actor = $request->user();
 
-        DB::transaction(function () use ($validated, $vendor): void {
+        $vendor = DB::transaction(function () use ($validated, $vendor, $actor): VendorProfile {
+            $vendor = VendorProfile::query()->lockForUpdate()->findOrFail($vendor->id);
+
+            if (! $actor->can('update', $vendor)) {
+                throw new AuthorizationException;
+            }
+
+            $previousUserId = $vendor->user_id;
+            $vendor->fill($validated);
+
+            if ($actor->role !== 'admin'
+                && $vendor->verification_status === 'approved'
+                && $vendor->isDirty(self::VerificationFields)) {
+                $validated['verification_status'] = 'pending';
+            }
+
             $ownerOrStatusChanged = array_key_exists('user_id', $validated)
                 || array_key_exists('verification_status', $validated);
             $previousUser = $ownerOrStatusChanged
-                ? $vendor->user()->first()
+                ? User::query()->find($previousUserId)
                 : null;
 
             if (array_key_exists('verification_status', $validated)
@@ -86,12 +109,12 @@ class VendorsController extends Controller
             $vendor->update($validated);
 
             if (! $ownerOrStatusChanged) {
-                return;
+                return $vendor;
             }
 
-            $user = $vendor->user()->firstOrFail();
+            $owner = $vendor->user()->firstOrFail();
 
-            if ($previousUser?->role === 'vendor' && ! $previousUser->is($user)) {
+            if ($previousUser?->role === 'vendor' && ! $previousUser->is($owner)) {
                 $previousUser->update(['status' => 'pending']);
                 $previousUser->tokens()->delete();
             }
@@ -102,11 +125,13 @@ class VendorsController extends Controller
                 'rejected' => 'blocked',
             };
 
-            $user->update(['status' => $status]);
-            $user->tokens()->delete();
+            $owner->update(['status' => $status]);
+            $owner->tokens()->delete();
+
+            return $vendor;
         });
 
-        return response()->json($vendor->refresh());
+        return response()->json($vendor);
     }
 
     public function destroy(VendorProfile $vendor): Response

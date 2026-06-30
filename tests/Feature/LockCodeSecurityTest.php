@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Log;
 use Mockery;
 use Modules\Bookings\Models\Booking;
 use Modules\LockCodes\Models\LockCode;
+use Modules\LockCodes\Services\LockCodeService;
 use Modules\Tools\Models\Tool;
 use Modules\Vendors\Models\VendorProfile;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -85,8 +86,10 @@ class LockCodeSecurityTest extends TestCase
 
         $this
             ->withToken($customer->createToken('test-client')->plainTextToken)
-            ->getJson("/api/v1/lock-codes/{$lockCode->id}/reveal")
+            ->postJson("/api/v1/lock-codes/{$lockCode->id}/reveal")
             ->assertOk()
+            ->assertHeader('Cache-Control', 'no-store, private')
+            ->assertHeader('Pragma', 'no-cache')
             ->assertJsonPath('code', '123456');
     }
 
@@ -103,7 +106,7 @@ class LockCodeSecurityTest extends TestCase
 
         $this
             ->withToken($customer->createToken('test-client')->plainTextToken)
-            ->getJson("/api/v1/lock-codes/{$lockCode->id}/reveal")
+            ->postJson("/api/v1/lock-codes/{$lockCode->id}/reveal")
             ->assertForbidden();
     }
 
@@ -121,8 +124,9 @@ class LockCodeSecurityTest extends TestCase
 
         $this
             ->withToken($vendor->createToken('test-client')->plainTextToken)
-            ->getJson("/api/v1/lock-codes/{$lockCode->id}/reveal")
+            ->postJson("/api/v1/lock-codes/{$lockCode->id}/reveal")
             ->assertOk()
+            ->assertHeader('Cache-Control', 'no-store, private')
             ->assertJsonPath('code', '123456');
     }
 
@@ -149,7 +153,7 @@ class LockCodeSecurityTest extends TestCase
 
         $this
             ->withToken($vendor->createToken('test-client')->plainTextToken)
-            ->getJson("/api/v1/lock-codes/{$lockCode->id}/reveal")
+            ->postJson("/api/v1/lock-codes/{$lockCode->id}/reveal")
             ->assertForbidden();
     }
 
@@ -349,6 +353,29 @@ class LockCodeSecurityTest extends TestCase
             ->getJson("/api/v1/lock-codes/{$lockCode->id}")
             ->assertOk()
             ->assertJsonPath('status', 'revoked');
+    }
+
+    public function test_stale_update_cannot_reactivate_revoked_lock_code(): void
+    {
+        [$vendor, $booking] = $this->createVendorBooking();
+        $lockCode = LockCode::factory()->create([
+            'booking_id' => $booking->id,
+            'status' => 'generated',
+            'valid_from' => now()->subMinute(),
+            'valid_until' => now()->addMinute(),
+        ]);
+        $staleLockCode = $lockCode->fresh();
+
+        $lockCode->update(['status' => 'revoked']);
+
+        try {
+            app(LockCodeService::class)->update($staleLockCode, ['status' => 'active'], $vendor);
+            $this->fail('A stale update reactivated a revoked lock code.');
+        } catch (AuthorizationException $exception) {
+            $this->assertSame('This action is unauthorized.', $exception->getMessage());
+        }
+
+        $this->assertSame('revoked', $lockCode->refresh()->status);
     }
 
     public function test_active_lock_code_details_and_status_history_are_immutable(): void

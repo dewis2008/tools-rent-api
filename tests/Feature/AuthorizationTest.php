@@ -233,6 +233,40 @@ class AuthorizationTest extends TestCase
             ->assertForbidden();
     }
 
+    public function test_vendor_material_update_returns_active_tool_to_pending_review(): void
+    {
+        $vendor = User::factory()->vendor()->create();
+        $vendorProfile = $this->createVendorProfile($vendor);
+        $category = Category::factory()->create();
+        $tool = Tool::factory()->create([
+            'vendor_id' => $vendorProfile->id,
+            'category_id' => $category->id,
+            'status' => 'active',
+        ]);
+
+        $this
+            ->withToken($vendor->createToken('test-client')->plainTextToken)
+            ->patchJson("/api/v1/tools/{$tool->id}", ['title' => 'Materially updated tool'])
+            ->assertOk()
+            ->assertJsonPath('title', 'Materially updated tool')
+            ->assertJsonPath('status', 'pending');
+
+        $this->assertSame('pending', $tool->refresh()->status);
+    }
+
+    public function test_admin_material_update_preserves_active_tool_status(): void
+    {
+        $tool = Tool::factory()->create(['status' => 'active']);
+        $admin = User::factory()->admin()->create();
+
+        $this
+            ->withToken($admin->createToken('admin-client')->plainTextToken)
+            ->patchJson("/api/v1/tools/{$tool->id}", ['title' => 'Admin-reviewed update'])
+            ->assertOk()
+            ->assertJsonPath('title', 'Admin-reviewed update')
+            ->assertJsonPath('status', 'active');
+    }
+
     public function test_customer_only_sees_active_tools(): void
     {
         $customer = User::factory()->create(['role' => 'customer']);

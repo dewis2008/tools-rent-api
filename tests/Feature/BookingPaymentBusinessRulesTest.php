@@ -682,9 +682,31 @@ class BookingPaymentBusinessRulesTest extends TestCase
 
         Queue::assertPushed(
             ProcessPaymentRefund::class,
-            fn (ProcessPaymentRefund $job): bool => $job->paymentId === $payment->id,
+            fn (ProcessPaymentRefund $job): bool => $job->paymentId === $payment->id
+                && $job->refundAttempt === 1,
         );
         $this->assertSame(1, $payment->refresh()->refund_attempts);
+    }
+
+    public function test_terminal_refund_job_failure_marks_only_its_attempt_as_failed(): void
+    {
+        $booking = $this->createBooking(User::factory()->customer()->create(), attributes: [
+            'status' => 'cancelled',
+        ]);
+        $payment = $this->createPayment($booking, [
+            'provider' => 'stripe',
+            'provider_payment_id' => 'pi_failed_job',
+            'refund_attempts' => 2,
+            'status' => 'refund_pending',
+        ]);
+
+        (new ProcessPaymentRefund($payment->id, 1))->failed(null);
+
+        $this->assertSame('refund_pending', $payment->refresh()->status);
+
+        (new ProcessPaymentRefund($payment->id, 2))->failed(null);
+
+        $this->assertSame('refund_failed', $payment->refresh()->status);
     }
 
     public function test_pending_stripe_refund_is_not_reported_as_refunded(): void
@@ -948,6 +970,22 @@ class BookingPaymentBusinessRulesTest extends TestCase
 
         $this->assertSame('paid', $booking->refresh()->status);
         $this->assertNotNull($payment->refresh()->paid_at);
+    }
+
+    public function test_stripe_payment_requires_payment_intent_before_being_marked_paid(): void
+    {
+        $admin = User::factory()->admin()->create();
+        $booking = $this->createBooking(User::factory()->customer()->create());
+        $payment = $this->createPayment($booking, ['provider' => 'stripe']);
+
+        $this
+            ->withToken($admin->createToken('test-client')->plainTextToken)
+            ->patchJson("/api/v1/payments/{$payment->id}", ['status' => 'paid'])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('provider_payment_id');
+
+        $this->assertSame('pending', $payment->refresh()->status);
+        $this->assertSame('pending', $booking->refresh()->status);
     }
 
     public function test_invalid_payment_status_transition_is_rejected(): void
