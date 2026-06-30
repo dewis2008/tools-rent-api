@@ -3,6 +3,7 @@
 namespace Modules\Payments\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 use Modules\Bookings\Models\Booking;
 use Modules\Payments\Models\Payment;
 
@@ -14,7 +15,14 @@ class StorePaymentRequest extends FormRequest
             'booking_id' => ['required', 'integer', 'exists:bookings,id', 'unique:payments,booking_id'],
             'customer_id' => ['prohibited'],
             'provider' => ['sometimes', 'required', 'in:demo,stripe,manual'],
-            'provider_payment_id' => ['nullable', 'string', 'max:255'],
+            'provider_payment_id' => [
+                'nullable',
+                'string',
+                'max:255',
+                Rule::unique('payments', 'provider_payment_id')->where(
+                    fn ($query) => $query->where('provider', $this->input('provider', 'demo')),
+                ),
+            ],
             'status' => ['prohibited'],
             'amount' => ['prohibited'],
             'currency' => ['prohibited'],

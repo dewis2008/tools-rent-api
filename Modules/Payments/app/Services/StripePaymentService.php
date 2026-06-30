@@ -6,12 +6,43 @@ use Illuminate\Validation\ValidationException;
 use Modules\Payments\Data\PaymentRefundResult;
 use Modules\Payments\Models\Payment;
 use Stripe\Exception\ApiErrorException;
+use Stripe\PaymentIntent;
 use Stripe\Refund;
 use Stripe\StripeClient;
 use UnexpectedValueException;
 
 class StripePaymentService
 {
+    public function verifySucceededPaymentIntent(Payment $payment, string $paymentIntentId): void
+    {
+        try {
+            $paymentIntent = $this->retrievePaymentIntent($paymentIntentId);
+        } catch (ApiErrorException $exception) {
+            report($exception);
+
+            throw ValidationException::withMessages([
+                'provider_payment_id' => __('The Stripe payment could not be verified.'),
+            ]);
+        }
+
+        $metadata = $paymentIntent->metadata?->toArray() ?? [];
+        $metadataMatches = ($metadata['booking_id'] ?? null) === (string) $payment->booking_id
+            && ($metadata['payment_id'] ?? null) === (string) $payment->id
+            && ($metadata['customer_id'] ?? null) === (string) $payment->customer_id;
+        $paymentMatches = $paymentIntent->status === PaymentIntent::STATUS_SUCCEEDED
+            && $paymentIntent->amount_received === $this->amountInMinorUnits($payment)
+            && strtolower($paymentIntent->currency) === strtolower($payment->currency)
+            && $metadataMatches;
+
+        if ($paymentMatches) {
+            return;
+        }
+
+        throw ValidationException::withMessages([
+            'provider_payment_id' => __('The Stripe payment does not match this booking.'),
+        ]);
+    }
+
     public function createRefund(Payment $payment): PaymentRefundResult
     {
         if (! $payment->provider_payment_id) {
@@ -71,6 +102,16 @@ class StripePaymentService
         }
 
         return new StripeClient($secret);
+    }
+
+    protected function retrievePaymentIntent(string $paymentIntentId): PaymentIntent
+    {
+        return $this->client()->paymentIntents->retrieve($paymentIntentId);
+    }
+
+    private function amountInMinorUnits(Payment $payment): int
+    {
+        return (int) round((float) $payment->amount * 100);
     }
 
     private function refundResult(Refund $refund): PaymentRefundResult

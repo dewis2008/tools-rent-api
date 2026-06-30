@@ -18,6 +18,7 @@ use Modules\Payments\Services\StripePaymentService;
 use Modules\Tools\Models\Tool;
 use Modules\Vendors\Models\VendorProfile;
 use PHPUnit\Framework\Attributes\DataProvider;
+use Stripe\PaymentIntent as StripePaymentIntent;
 use Tests\TestCase;
 
 class BookingPaymentBusinessRulesTest extends TestCase
@@ -1038,6 +1039,110 @@ class BookingPaymentBusinessRulesTest extends TestCase
 
         $this->assertSame('pending', $payment->refresh()->status);
         $this->assertSame('pending', $booking->refresh()->status);
+    }
+
+    public function test_stripe_payment_is_verified_before_being_marked_paid(): void
+    {
+        $admin = User::factory()->admin()->create();
+        $booking = $this->createBooking(User::factory()->customer()->create());
+        $payment = $this->createPayment($booking, ['provider' => 'stripe']);
+        $paymentIntent = StripePaymentIntent::constructFrom([
+            'id' => 'pi_verified',
+            'status' => StripePaymentIntent::STATUS_SUCCEEDED,
+            'amount_received' => 2500,
+            'currency' => 'eur',
+            'metadata' => [
+                'booking_id' => (string) $booking->id,
+                'payment_id' => (string) $payment->id,
+                'customer_id' => (string) $booking->customer_id,
+            ],
+        ]);
+        $stripe = new class($paymentIntent) extends StripePaymentService
+        {
+            public function __construct(
+                private StripePaymentIntent $paymentIntent,
+            ) {}
+
+            protected function retrievePaymentIntent(string $paymentIntentId): StripePaymentIntent
+            {
+                return $this->paymentIntent;
+            }
+        };
+        $this->app->instance(StripePaymentService::class, $stripe);
+
+        $this
+            ->withToken($admin->createToken('test-client')->plainTextToken)
+            ->patchJson("/api/v1/payments/{$payment->id}", [
+                'status' => 'paid',
+                'provider_payment_id' => 'pi_verified',
+            ])
+            ->assertOk()
+            ->assertJsonPath('status', 'paid');
+
+        $this->assertSame('paid', $booking->refresh()->status);
+    }
+
+    public function test_mismatched_stripe_payment_cannot_be_marked_paid(): void
+    {
+        $admin = User::factory()->admin()->create();
+        $booking = $this->createBooking(User::factory()->customer()->create());
+        $payment = $this->createPayment($booking, ['provider' => 'stripe']);
+        $paymentIntent = StripePaymentIntent::constructFrom([
+            'id' => 'pi_wrong_amount',
+            'status' => StripePaymentIntent::STATUS_SUCCEEDED,
+            'amount_received' => 100,
+            'currency' => 'eur',
+            'metadata' => [
+                'booking_id' => (string) $booking->id,
+                'payment_id' => (string) $payment->id,
+                'customer_id' => (string) $booking->customer_id,
+            ],
+        ]);
+        $stripe = new class($paymentIntent) extends StripePaymentService
+        {
+            public function __construct(
+                private StripePaymentIntent $paymentIntent,
+            ) {}
+
+            protected function retrievePaymentIntent(string $paymentIntentId): StripePaymentIntent
+            {
+                return $this->paymentIntent;
+            }
+        };
+        $this->app->instance(StripePaymentService::class, $stripe);
+
+        $this
+            ->withToken($admin->createToken('test-client')->plainTextToken)
+            ->patchJson("/api/v1/payments/{$payment->id}", [
+                'status' => 'paid',
+                'provider_payment_id' => 'pi_wrong_amount',
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('provider_payment_id');
+
+        $this->assertSame('pending', $payment->refresh()->status);
+        $this->assertSame('pending', $booking->refresh()->status);
+    }
+
+    public function test_provider_payment_reference_cannot_be_reused(): void
+    {
+        $customer = User::factory()->customer()->create();
+        $firstBooking = $this->createBooking($customer);
+        $secondBooking = $this->createBooking($customer);
+        $this->createPayment($firstBooking, [
+            'provider' => 'stripe',
+            'provider_payment_id' => 'pi_unique',
+        ]);
+
+        $this
+            ->withToken($customer->createToken('test-client')->plainTextToken)
+            ->postJson('/api/v1/payments', [
+                'booking_id' => $secondBooking->id,
+                'provider' => 'stripe',
+                'provider_payment_id' => 'pi_unique',
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('provider_payment_id');
     }
 
     public function test_invalid_payment_status_transition_is_rejected(): void

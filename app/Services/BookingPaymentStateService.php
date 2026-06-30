@@ -8,6 +8,7 @@ use Illuminate\Validation\ValidationException;
 use Modules\Bookings\Models\Booking;
 use Modules\Payments\Models\Payment;
 use Modules\Payments\Services\PaymentRefundService;
+use Modules\Payments\Services\StripePaymentService;
 
 class BookingPaymentStateService
 {
@@ -30,6 +31,7 @@ class BookingPaymentStateService
 
     public function __construct(
         private PaymentRefundService $paymentRefunds,
+        private StripePaymentService $stripePayments,
     ) {}
 
     public function transitionBooking(Booking $booking, string $status, User $user): Booking
@@ -74,6 +76,8 @@ class BookingPaymentStateService
 
     public function transitionPayment(Payment $payment, array $validated): Payment
     {
+        $this->verifyStripePayment($payment, $validated);
+
         return DB::transaction(function () use ($payment, $validated): Payment {
             $booking = Booking::query()->lockForUpdate()->findOrFail($payment->booking_id);
             $payment = Payment::query()
@@ -222,6 +226,23 @@ class BookingPaymentStateService
         throw ValidationException::withMessages([
             'provider_payment_id' => __('A Stripe PaymentIntent identifier is required before marking the payment as paid.'),
         ]);
+    }
+
+    private function verifyStripePayment(Payment $payment, array $validated): void
+    {
+        if ($validated['status'] !== 'paid' || $payment->provider !== 'stripe') {
+            return;
+        }
+
+        $providerPaymentId = $validated['provider_payment_id'] ?? $payment->provider_payment_id;
+
+        if (! $providerPaymentId) {
+            throw ValidationException::withMessages([
+                'provider_payment_id' => __('A Stripe PaymentIntent identifier is required before marking the payment as paid.'),
+            ]);
+        }
+
+        $this->stripePayments->verifySucceededPaymentIntent($payment, $providerPaymentId);
     }
 
     private function synchronizeBookingWithPayment(Booking $booking, Payment $payment): void
