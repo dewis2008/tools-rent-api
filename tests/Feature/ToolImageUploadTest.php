@@ -3,13 +3,19 @@
 namespace Tests\Feature;
 
 use App\Models\User;
+use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Mockery;
 use Modules\Categories\Models\Category;
+use Modules\ToolImages\Models\PendingToolImageFileDeletion;
 use Modules\ToolImages\Models\ToolImage;
+use Modules\ToolImages\Services\ToolImageService;
 use Modules\Tools\Models\Tool;
 use Modules\Vendors\Models\VendorProfile;
+use RuntimeException;
 use Tests\TestCase;
 
 class ToolImageUploadTest extends TestCase
@@ -154,6 +160,146 @@ class ToolImageUploadTest extends TestCase
 
         $this->assertDatabaseMissing('tool_images', ['id' => $toolImage->id]);
         Storage::disk('public')->assertMissing($path);
+    }
+
+    public function test_tool_image_file_is_not_deleted_when_the_database_transaction_rolls_back(): void
+    {
+        Storage::fake('public');
+
+        $vendor = User::factory()->create(['role' => 'vendor']);
+        $tool = $this->createToolForVendor($vendor);
+        $path = "tool-images/{$tool->id}/rollback.jpg";
+
+        Storage::disk('public')->put($path, 'stored image');
+
+        $toolImage = ToolImage::create([
+            'tool_id' => $tool->id,
+            'image_path' => $path,
+        ]);
+
+        try {
+            DB::transaction(function () use ($tool): void {
+                $tool->delete();
+
+                throw new RuntimeException('Rollback the tool deletion.');
+            });
+        } catch (RuntimeException $exception) {
+            $this->assertSame('Rollback the tool deletion.', $exception->getMessage());
+        }
+
+        $this->assertDatabaseHas('tools', [
+            'id' => $tool->id,
+            'deleted_at' => null,
+        ]);
+        $this->assertDatabaseHas('tool_images', ['id' => $toolImage->id]);
+        $this->assertDatabaseCount('pending_tool_image_file_deletions', 0);
+        Storage::disk('public')->assertExists($path);
+    }
+
+    public function test_replacement_file_is_removed_when_an_outer_transaction_rolls_back(): void
+    {
+        Storage::fake('public');
+
+        $vendor = User::factory()->create(['role' => 'vendor']);
+        $tool = $this->createToolForVendor($vendor);
+        $oldPath = "tool-images/{$tool->id}/original.jpg";
+        $newPath = null;
+
+        Storage::disk('public')->put($oldPath, 'stored image');
+
+        $toolImage = ToolImage::create([
+            'tool_id' => $tool->id,
+            'image_path' => $oldPath,
+        ]);
+
+        try {
+            DB::transaction(function () use ($toolImage, &$newPath): void {
+                $updatedImage = app(ToolImageService::class)->update($toolImage, [
+                    'image' => UploadedFile::fake()->image('replacement.jpg', 640, 480),
+                ]);
+                $newPath = $updatedImage->image_path;
+
+                throw new RuntimeException('Rollback the image replacement.');
+            });
+        } catch (RuntimeException $exception) {
+            $this->assertSame('Rollback the image replacement.', $exception->getMessage());
+        }
+
+        $this->assertSame($oldPath, $toolImage->refresh()->image_path);
+        $this->assertDatabaseCount('pending_tool_image_file_deletions', 0);
+        Storage::disk('public')->assertExists($oldPath);
+        Storage::disk('public')->assertMissing($newPath);
+    }
+
+    public function test_failed_file_deletion_is_retained_for_retry(): void
+    {
+        $vendor = User::factory()->create(['role' => 'vendor']);
+        $tool = $this->createToolForVendor($vendor);
+        $path = "tool-images/{$tool->id}/retry.jpg";
+        $toolImage = ToolImage::create([
+            'tool_id' => $tool->id,
+            'image_path' => $path,
+        ]);
+        $disk = Mockery::mock(FilesystemAdapter::class);
+
+        $disk->shouldReceive('delete')->once()->with($path)->andReturnFalse();
+        Storage::shouldReceive('disk')->with('public')->andReturn($disk);
+
+        app(ToolImageService::class)->delete($toolImage);
+
+        $this->assertDatabaseMissing('tool_images', ['id' => $toolImage->id]);
+        $this->assertDatabaseHas('pending_tool_image_file_deletions', [
+            'image_path' => $path,
+            'attempts' => 1,
+            'last_error' => 'Tool image file could not be deleted.',
+        ]);
+    }
+
+    public function test_pending_file_deletions_can_be_retried(): void
+    {
+        Storage::fake('public');
+
+        $path = 'tool-images/pending/retry.jpg';
+        Storage::disk('public')->put($path, 'stored image');
+        PendingToolImageFileDeletion::create([
+            'image_path' => $path,
+            'attempts' => 1,
+            'last_error' => 'Previous failure.',
+        ]);
+
+        $this
+            ->artisan('tool-images:delete-pending-files')
+            ->expectsOutput('Deleted 1 pending tool image files.')
+            ->assertSuccessful();
+
+        $this->assertDatabaseCount('pending_tool_image_file_deletions', 0);
+        Storage::disk('public')->assertMissing($path);
+    }
+
+    public function test_pending_deletion_does_not_remove_a_referenced_file(): void
+    {
+        Storage::fake('public');
+
+        $vendor = User::factory()->create(['role' => 'vendor']);
+        $tool = $this->createToolForVendor($vendor);
+        $path = "tool-images/{$tool->id}/still-referenced.jpg";
+
+        Storage::disk('public')->put($path, 'stored image');
+        ToolImage::create([
+            'tool_id' => $tool->id,
+            'image_path' => $path,
+        ]);
+        PendingToolImageFileDeletion::create([
+            'image_path' => $path,
+        ]);
+
+        $this
+            ->artisan('tool-images:delete-pending-files')
+            ->expectsOutput('Deleted 0 pending tool image files.')
+            ->assertSuccessful();
+
+        $this->assertDatabaseCount('pending_tool_image_file_deletions', 0);
+        Storage::disk('public')->assertExists($path);
     }
 
     public function test_deleting_tool_removes_stored_image_files(): void

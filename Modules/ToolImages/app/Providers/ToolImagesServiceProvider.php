@@ -3,6 +3,7 @@
 namespace Modules\ToolImages\Providers;
 
 use Illuminate\Console\Scheduling\Schedule;
+use Modules\ToolImages\Console\DeletePendingToolImageFilesCommand;
 use Nwidart\Modules\Support\ModuleServiceProvider;
 
 class ToolImagesServiceProvider extends ModuleServiceProvider
@@ -22,7 +23,9 @@ class ToolImagesServiceProvider extends ModuleServiceProvider
      *
      * @var string[]
      */
-    // protected array $commands = [];
+    protected array $commands = [
+        DeletePendingToolImageFilesCommand::class,
+    ];
 
     /**
      * Provider classes to register.
@@ -36,11 +39,12 @@ class ToolImagesServiceProvider extends ModuleServiceProvider
 
     /**
      * Define module schedules.
-     *
-     * @param  $schedule
      */
-    // protected function configureSchedules(Schedule $schedule): void
-    // {
-    //     $schedule->command('inspire')->hourly();
-    // }
+    protected function configureSchedules(Schedule $schedule): void
+    {
+        $schedule
+            ->command(DeletePendingToolImageFilesCommand::class)
+            ->everyMinute()
+            ->withoutOverlapping();
+    }
 }

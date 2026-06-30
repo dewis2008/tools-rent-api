@@ -55,6 +55,10 @@ class VendorProfile extends Model
 
             $vendorProfile->tools->each->delete();
         });
+
+        static::deleted(function (): void {
+            app(ToolImageService::class)->processPendingDeletionsAfterCommit();
+        });
     }
 
     public function user(): BelongsTo

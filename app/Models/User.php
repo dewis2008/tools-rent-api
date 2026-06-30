@@ -39,6 +39,10 @@ class User extends Authenticatable implements MustVerifyEmailContract
 
             app(ToolImageService::class)->deleteFilesForUser($user);
         });
+
+        static::deleted(function (): void {
+            app(ToolImageService::class)->processPendingDeletionsAfterCommit();
+        });
     }
 
     public function vendorProfile(): HasOne
