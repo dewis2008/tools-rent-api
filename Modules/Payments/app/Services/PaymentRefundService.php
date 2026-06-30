@@ -31,7 +31,7 @@ class PaymentRefundService
 
     public function schedule(Payment $payment): void
     {
-        ProcessPaymentRefund::dispatch($payment->id)->afterCommit();
+        ProcessPaymentRefund::dispatch($payment->id, $payment->refund_attempts)->afterCommit();
     }
 
     public function synchronizePendingStripeRefunds(int $limit = 100): int

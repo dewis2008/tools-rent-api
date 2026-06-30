@@ -83,6 +83,7 @@ class BookingPaymentStateService
             $status = $validated['status'];
 
             if ($payment->status === $status) {
+                $this->ensureProviderReferenceSupportsPaymentStatus($payment, $status, $validated);
                 $this->synchronizeBookingWithPayment($booking, $payment);
 
                 return $this->updateProviderReference($payment, $validated);
@@ -97,6 +98,7 @@ class BookingPaymentStateService
             }
 
             $this->ensureBookingSupportsPaymentStatus($booking, $status);
+            $this->ensureProviderReferenceSupportsPaymentStatus($payment, $status, $validated);
 
             $updates = [
                 'status' => $status,
@@ -188,6 +190,26 @@ class BookingPaymentStateService
 
         throw ValidationException::withMessages([
             'status' => __("A {$booking->status} booking cannot be refunded."),
+        ]);
+    }
+
+    private function ensureProviderReferenceSupportsPaymentStatus(
+        Payment $payment,
+        string $status,
+        array $validated,
+    ): void {
+        if ($status !== 'paid' || $payment->provider !== 'stripe') {
+            return;
+        }
+
+        $providerPaymentId = $validated['provider_payment_id'] ?? $payment->provider_payment_id;
+
+        if ($providerPaymentId) {
+            return;
+        }
+
+        throw ValidationException::withMessages([
+            'provider_payment_id' => __('A Stripe PaymentIntent identifier is required before marking the payment as paid.'),
         ]);
     }
 
