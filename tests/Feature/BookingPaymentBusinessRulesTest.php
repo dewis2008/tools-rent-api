@@ -6,10 +6,13 @@ use App\Models\User;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Mockery;
 use Modules\Bookings\Models\Booking;
 use Modules\Categories\Models\Category;
 use Modules\LockCodes\Models\LockCode;
+use Modules\Payments\Data\PaymentRefundResult;
 use Modules\Payments\Models\Payment;
+use Modules\Payments\Services\StripePaymentService;
 use Modules\Tools\Models\Tool;
 use Modules\Vendors\Models\VendorProfile;
 use Tests\TestCase;
@@ -385,6 +388,92 @@ class BookingPaymentBusinessRulesTest extends TestCase
             ->assertJsonPath('payment.status', 'refunded');
 
         $this->assertSame('cancelled', $booking->refresh()->status);
+        $this->assertSame('refunded', $payment->refresh()->status);
+    }
+
+    public function test_stripe_booking_cancellation_only_marks_confirmed_refund_as_refunded(): void
+    {
+        $vendor = User::factory()->create(['role' => 'vendor']);
+        $vendorProfile = $this->createVendorProfile($vendor);
+        $booking = $this->createBooking(User::factory()->create(['role' => 'customer']), vendorProfile: $vendorProfile, attributes: [
+            'status' => 'paid',
+        ]);
+        $payment = $this->createPayment($booking, [
+            'provider' => 'stripe',
+            'provider_payment_id' => 'pi_confirmed_refund',
+            'status' => 'paid',
+        ]);
+        $stripe = Mockery::mock(StripePaymentService::class);
+
+        $stripe
+            ->shouldReceive('createRefund')
+            ->once()
+            ->withArgs(fn (Payment $candidate): bool => $candidate->is($payment))
+            ->andReturn(new PaymentRefundResult('refunded', 're_confirmed'));
+        $this->app->instance(StripePaymentService::class, $stripe);
+
+        $this
+            ->withToken($vendor->createToken('test-client')->plainTextToken)
+            ->patchJson("/api/v1/bookings/{$booking->id}", ['status' => 'cancelled'])
+            ->assertOk()
+            ->assertJsonPath('status', 'cancelled')
+            ->assertJsonPath('payment.status', 'refunded')
+            ->assertJsonPath('payment.provider_refund_id', 're_confirmed');
+    }
+
+    public function test_pending_stripe_refund_is_not_reported_as_refunded(): void
+    {
+        $vendor = User::factory()->create(['role' => 'vendor']);
+        $vendorProfile = $this->createVendorProfile($vendor);
+        $booking = $this->createBooking(User::factory()->create(['role' => 'customer']), vendorProfile: $vendorProfile, attributes: [
+            'status' => 'paid',
+        ]);
+        $payment = $this->createPayment($booking, [
+            'provider' => 'stripe',
+            'provider_payment_id' => 'pi_pending_refund',
+            'status' => 'paid',
+        ]);
+        $stripe = Mockery::mock(StripePaymentService::class);
+
+        $stripe
+            ->shouldReceive('createRefund')
+            ->once()
+            ->andReturn(new PaymentRefundResult('refund_pending', 're_pending'));
+        $this->app->instance(StripePaymentService::class, $stripe);
+
+        $this
+            ->withToken($vendor->createToken('test-client')->plainTextToken)
+            ->patchJson("/api/v1/bookings/{$booking->id}", ['status' => 'cancelled'])
+            ->assertOk()
+            ->assertJsonPath('status', 'cancelled')
+            ->assertJsonPath('payment.status', 'refund_pending')
+            ->assertJsonPath('payment.provider_refund_id', 're_pending');
+    }
+
+    public function test_pending_stripe_refunds_are_synchronized_after_confirmation(): void
+    {
+        $booking = $this->createBooking(User::factory()->create(['role' => 'customer']), attributes: [
+            'status' => 'cancelled',
+        ]);
+        $payment = $this->createPayment($booking, [
+            'provider' => 'stripe',
+            'provider_payment_id' => 'pi_pending_refund',
+            'provider_refund_id' => 're_pending',
+            'status' => 'refund_pending',
+        ]);
+        $stripe = Mockery::mock(StripePaymentService::class);
+
+        $stripe
+            ->shouldReceive('retrieveRefund')
+            ->once()
+            ->with('re_pending')
+            ->andReturn(new PaymentRefundResult('refunded', 're_pending'));
+        $this->app->instance(StripePaymentService::class, $stripe);
+
+        $this->artisan('payments:sync-stripe-refunds')
+            ->expectsOutput('Synchronized 1 Stripe refunds.')
+            ->assertSuccessful();
+
         $this->assertSame('refunded', $payment->refresh()->status);
     }
 

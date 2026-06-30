@@ -3,6 +3,7 @@
 namespace Modules\Payments\Providers;
 
 use Illuminate\Console\Scheduling\Schedule;
+use Modules\Payments\Console\SyncPendingStripeRefundsCommand;
 use Nwidart\Modules\Support\ModuleServiceProvider;
 
 class PaymentsServiceProvider extends ModuleServiceProvider
@@ -22,7 +23,9 @@ class PaymentsServiceProvider extends ModuleServiceProvider
      *
      * @var string[]
      */
-    // protected array $commands = [];
+    protected array $commands = [
+        SyncPendingStripeRefundsCommand::class,
+    ];
 
     /**
      * Provider classes to register.
@@ -34,13 +37,11 @@ class PaymentsServiceProvider extends ModuleServiceProvider
         RouteServiceProvider::class,
     ];
 
-    /**
-     * Define module schedules.
-     *
-     * @param  $schedule
-     */
-    // protected function configureSchedules(Schedule $schedule): void
-    // {
-    //     $schedule->command('inspire')->hourly();
-    // }
+    protected function configureSchedules(Schedule $schedule): void
+    {
+        $schedule
+            ->command(SyncPendingStripeRefundsCommand::class)
+            ->everyMinute()
+            ->withoutOverlapping();
+    }
 }

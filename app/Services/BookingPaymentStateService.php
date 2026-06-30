@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Modules\Bookings\Models\Booking;
 use Modules\Payments\Models\Payment;
+use Modules\Payments\Services\PaymentRefundService;
 
 class BookingPaymentStateService
 {
@@ -22,8 +23,14 @@ class BookingPaymentStateService
         'pending' => ['paid', 'failed'],
         'paid' => ['refunded'],
         'failed' => ['pending'],
+        'refund_pending' => [],
+        'refund_failed' => [],
         'refunded' => [],
     ];
+
+    public function __construct(
+        private PaymentRefundService $paymentRefunds,
+    ) {}
 
     public function transitionBooking(Booking $booking, string $status, User $user): Booking
     {
@@ -55,7 +62,9 @@ class BookingPaymentStateService
             $this->ensurePaymentSupportsBookingStatus($payment, $status);
 
             if ($status === 'cancelled' && $payment?->status === 'paid') {
-                $payment->update(['status' => 'refunded']);
+                $refund = $this->paymentRefunds->refund($payment);
+
+                $payment->update($refund->paymentUpdates());
             }
 
             $booking->update(['status' => $status]);
@@ -93,6 +102,12 @@ class BookingPaymentStateService
             $updates = [
                 'status' => $status,
             ];
+
+            if ($payment->status === 'paid' && $status === 'refunded') {
+                $refund = $this->paymentRefunds->refund($payment);
+                $updates = $refund->paymentUpdates();
+                $status = $refund->paymentStatus;
+            }
 
             if (array_key_exists('provider_payment_id', $validated)) {
                 $updates['provider_payment_id'] = $validated['provider_payment_id'];
@@ -183,7 +198,7 @@ class BookingPaymentStateService
             ]);
         }
 
-        if ($payment->status !== 'refunded') {
+        if (! in_array($payment->status, ['refunded', 'refund_pending'], true)) {
             return;
         }
 
