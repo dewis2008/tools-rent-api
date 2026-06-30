@@ -62,9 +62,8 @@ class BookingPaymentStateService
             $this->ensurePaymentSupportsBookingStatus($payment, $status);
 
             if ($status === 'cancelled' && $payment?->status === 'paid') {
-                $refund = $this->paymentRefunds->refund($payment);
-
-                $payment->update($refund->paymentUpdates());
+                $payment->update($this->pendingRefundUpdates($payment));
+                $this->paymentRefunds->schedule($payment);
             }
 
             $booking->update(['status' => $status]);
@@ -103,10 +102,12 @@ class BookingPaymentStateService
                 'status' => $status,
             ];
 
-            if (in_array($payment->status, ['paid', 'refund_failed'], true) && $status === 'refunded') {
-                $refund = $this->paymentRefunds->refund($payment);
-                $updates = $refund->paymentUpdates();
-                $status = $refund->paymentStatus;
+            $shouldScheduleRefund = in_array($payment->status, ['paid', 'refund_failed'], true)
+                && $status === 'refunded';
+
+            if ($shouldScheduleRefund) {
+                $updates = $this->pendingRefundUpdates($payment);
+                $status = 'refund_pending';
             }
 
             if (array_key_exists('provider_payment_id', $validated)) {
@@ -123,6 +124,10 @@ class BookingPaymentStateService
 
             $payment->update($updates);
             $this->synchronizeBookingWithPayment($booking, $payment);
+
+            if ($shouldScheduleRefund) {
+                $this->paymentRefunds->schedule($payment);
+            }
 
             return $payment;
         });
@@ -232,5 +237,14 @@ class BookingPaymentStateService
         }
 
         return $payment;
+    }
+
+    private function pendingRefundUpdates(Payment $payment): array
+    {
+        return [
+            'status' => 'refund_pending',
+            'provider_refund_id' => null,
+            'refund_attempts' => $payment->refund_attempts + 1,
+        ];
     }
 }

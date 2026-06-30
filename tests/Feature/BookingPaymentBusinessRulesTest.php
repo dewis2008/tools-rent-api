@@ -6,11 +6,13 @@ use App\Models\User;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Queue;
 use Mockery;
 use Modules\Bookings\Models\Booking;
 use Modules\Categories\Models\Category;
 use Modules\LockCodes\Models\LockCode;
 use Modules\Payments\Data\PaymentRefundResult;
+use Modules\Payments\Jobs\ProcessPaymentRefund;
 use Modules\Payments\Models\Payment;
 use Modules\Payments\Services\StripePaymentService;
 use Modules\Tools\Models\Tool;
@@ -596,11 +598,13 @@ class BookingPaymentBusinessRulesTest extends TestCase
             'status' => 'paid',
         ]);
         $stripe = Mockery::mock(StripePaymentService::class);
+        $transactionLevel = DB::transactionLevel();
 
         $stripe
             ->shouldReceive('createRefund')
             ->once()
-            ->withArgs(fn (Payment $candidate): bool => $candidate->is($payment))
+            ->withArgs(fn (Payment $candidate): bool => $candidate->is($payment)
+                && DB::transactionLevel() === $transactionLevel)
             ->andReturn(new PaymentRefundResult('refunded', 're_confirmed'));
         $this->app->instance(StripePaymentService::class, $stripe);
 
@@ -611,6 +615,35 @@ class BookingPaymentBusinessRulesTest extends TestCase
             ->assertJsonPath('status', 'cancelled')
             ->assertJsonPath('payment.status', 'refunded')
             ->assertJsonPath('payment.provider_refund_id', 're_confirmed');
+    }
+
+    public function test_stripe_refund_is_queued_after_booking_cancellation_commits(): void
+    {
+        Queue::fake();
+
+        $vendor = User::factory()->vendor()->create();
+        $vendorProfile = $this->createVendorProfile($vendor);
+        $booking = $this->createBooking(User::factory()->customer()->create(), vendorProfile: $vendorProfile, attributes: [
+            'status' => 'paid',
+        ]);
+        $payment = $this->createPayment($booking, [
+            'provider' => 'stripe',
+            'provider_payment_id' => 'pi_queued_refund',
+            'status' => 'paid',
+        ]);
+
+        $this
+            ->withToken($vendor->createToken('test-client')->plainTextToken)
+            ->patchJson("/api/v1/bookings/{$booking->id}", ['status' => 'cancelled'])
+            ->assertOk()
+            ->assertJsonPath('status', 'cancelled')
+            ->assertJsonPath('payment.status', 'refund_pending');
+
+        Queue::assertPushed(
+            ProcessPaymentRefund::class,
+            fn (ProcessPaymentRefund $job): bool => $job->paymentId === $payment->id,
+        );
+        $this->assertSame(1, $payment->refresh()->refund_attempts);
     }
 
     public function test_pending_stripe_refund_is_not_reported_as_refunded(): void
@@ -671,6 +704,7 @@ class BookingPaymentBusinessRulesTest extends TestCase
             ->assertJsonPath('payment.provider_refund_id', 're_failed');
 
         $this->assertSame('refund_failed', $payment->refresh()->status);
+        $this->assertSame(1, $payment->refund_attempts);
     }
 
     public function test_pending_stripe_refunds_are_synchronized_after_confirmation(): void
@@ -709,6 +743,7 @@ class BookingPaymentBusinessRulesTest extends TestCase
             'provider' => 'stripe',
             'provider_payment_id' => 'pi_failed_refund',
             'provider_refund_id' => 're_failed',
+            'refund_attempts' => 1,
             'status' => 'refund_failed',
         ]);
         $stripe = Mockery::mock(StripePaymentService::class);
@@ -726,6 +761,7 @@ class BookingPaymentBusinessRulesTest extends TestCase
             ->assertOk()
             ->assertJsonPath('status', 'refunded')
             ->assertJsonPath('provider_refund_id', 're_retry')
+            ->assertJsonPath('refund_attempts', 2)
             ->assertJsonPath('booking.status', 'cancelled');
     }
 

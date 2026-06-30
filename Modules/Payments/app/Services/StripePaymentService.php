@@ -87,7 +87,7 @@ class StripePaymentService
 
     private function refundIdempotencyKey(Payment $payment): string
     {
-        $attempt = $payment->provider_refund_id ?: 'initial';
+        $attempt = max($payment->refund_attempts, 1);
 
         return "payment-{$payment->id}-refund-{$attempt}";
     }

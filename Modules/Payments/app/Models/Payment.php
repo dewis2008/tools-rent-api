@@ -19,6 +19,7 @@ class Payment extends Model
         'provider',
         'provider_payment_id',
         'provider_refund_id',
+        'refund_attempts',
         'status',
         'amount',
         'currency',
@@ -29,6 +30,7 @@ class Payment extends Model
     {
         return [
             'amount' => 'decimal:2',
+            'refund_attempts' => 'integer',
             'paid_at' => 'datetime',
         ];
     }
