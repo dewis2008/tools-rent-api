@@ -20,11 +20,11 @@ class LockCodePolicy
             return null;
         }
 
-        if (in_array($ability, ['update', 'delete'], true)) {
-            return null;
+        if (in_array($ability, ['viewAny', 'view', 'create'], true)) {
+            return true;
         }
 
-        return true;
+        return null;
     }
 
     public function viewAny(User $user): bool
@@ -47,7 +47,8 @@ class LockCodePolicy
             return false;
         }
 
-        $canAccessBooking = $booking->customer_id === $user->id
+        $canAccessBooking = $user->role === 'admin'
+            || $booking->customer_id === $user->id
             || $this->ownsVendorProfile($user, $booking->vendor_id);
 
         if (! $canAccessBooking) {
@@ -62,7 +63,7 @@ class LockCodePolicy
 
         return $booking->isRentalActiveAt($now)
             && $lockCode->valid_from->lte($now)
-            && $lockCode->valid_until->gte($now);
+            && $lockCode->valid_until->gt($now);
     }
 
     public function create(User $user): bool

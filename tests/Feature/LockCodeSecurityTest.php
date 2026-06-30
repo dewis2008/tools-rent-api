@@ -130,6 +130,82 @@ class LockCodeSecurityTest extends TestCase
             ->assertJsonPath('code', '123456');
     }
 
+    public function test_admin_can_only_reveal_lock_code_during_its_active_rental_window(): void
+    {
+        [, $booking] = $this->createVendorBooking();
+        $lockCode = LockCode::factory()->active()->create([
+            'booking_id' => $booking->id,
+            'code' => '123456',
+            'valid_from' => now()->subMinute(),
+            'valid_until' => now()->addMinute(),
+        ]);
+        $admin = User::factory()->admin()->create();
+
+        Log::shouldReceive('info')->once();
+
+        $this
+            ->withToken($admin->createToken('admin-client')->plainTextToken)
+            ->postJson("/api/v1/lock-codes/{$lockCode->id}/reveal")
+            ->assertOk()
+            ->assertJsonPath('code', '123456');
+    }
+
+    public function test_admin_cannot_reveal_inactive_lock_code(): void
+    {
+        [, $booking] = $this->createVendorBooking();
+        $lockCode = LockCode::factory()->create([
+            'booking_id' => $booking->id,
+            'valid_from' => now()->subMinute(),
+            'valid_until' => now()->addMinute(),
+            'status' => 'revoked',
+        ]);
+        $admin = User::factory()->admin()->create();
+
+        $this
+            ->withToken($admin->createToken('admin-client')->plainTextToken)
+            ->postJson("/api/v1/lock-codes/{$lockCode->id}/reveal")
+            ->assertForbidden();
+    }
+
+    public function test_rental_window_end_is_exclusive_for_lock_code_reveal(): void
+    {
+        $boundary = now()->startOfSecond();
+        $this->travelTo($boundary);
+
+        [, $booking, $customer] = $this->createVendorBooking();
+        $booking->update(['end_at' => $boundary]);
+        $lockCode = LockCode::factory()->active()->create([
+            'booking_id' => $booking->id,
+            'valid_from' => $boundary->copy()->subMinute(),
+            'valid_until' => $boundary->copy()->addMinute(),
+        ]);
+
+        $this
+            ->withToken($customer->createToken('customer-client')->plainTextToken)
+            ->postJson("/api/v1/lock-codes/{$lockCode->id}/reveal")
+            ->assertForbidden();
+
+        $this->assertFalse($booking->refresh()->isRentalActiveAt($boundary));
+    }
+
+    public function test_lock_code_validity_end_is_exclusive(): void
+    {
+        $boundary = now()->startOfSecond();
+        $this->travelTo($boundary);
+
+        [, $booking, $customer] = $this->createVendorBooking();
+        $lockCode = LockCode::factory()->active()->create([
+            'booking_id' => $booking->id,
+            'valid_from' => $boundary->copy()->subMinute(),
+            'valid_until' => $boundary,
+        ]);
+
+        $this
+            ->withToken($customer->createToken('customer-client')->plainTextToken)
+            ->postJson("/api/v1/lock-codes/{$lockCode->id}/reveal")
+            ->assertForbidden();
+    }
+
     #[DataProvider('ineligibleBookingProvider')]
     public function test_vendor_cannot_reveal_active_lock_code_for_ineligible_booking(
         string $status,

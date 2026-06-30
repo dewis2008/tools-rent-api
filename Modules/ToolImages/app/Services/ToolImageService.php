@@ -149,7 +149,7 @@ class ToolImageService
 
     private function storeImage(UploadedFile $image, int $toolId): string
     {
-        $path = $image->store("tool-images/{$toolId}", 'public');
+        $path = $image->store("tool-images/{$toolId}", $this->disk());
 
         if (! $path) {
             throw new RuntimeException('Tool image could not be stored.');
@@ -193,7 +193,7 @@ class ToolImageService
     private function deleteOrQueueFile(string $path): void
     {
         try {
-            if (Storage::disk('public')->delete($path)) {
+            if (Storage::disk($this->disk())->delete($path)) {
                 return;
             }
         } catch (Throwable $exception) {
@@ -219,7 +219,7 @@ class ToolImageService
         }
 
         try {
-            if (! Storage::disk('public')->delete($deletion->image_path)) {
+            if (! Storage::disk($this->disk())->delete($deletion->image_path)) {
                 throw new RuntimeException('Tool image file could not be deleted.');
             }
 
@@ -237,5 +237,10 @@ class ToolImageService
 
             return false;
         }
+    }
+
+    private function disk(): string
+    {
+        return (string) config('toolimages.disk', 'local');
     }
 }

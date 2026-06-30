@@ -4,11 +4,13 @@ namespace Modules\Tools\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
 use Modules\Tools\Http\Requests\StoreToolRequest;
 use Modules\Tools\Http\Requests\UpdateToolRequest;
+use Modules\Tools\Http\Resources\ToolsResource;
 use Modules\Tools\Models\Tool;
 
 class ToolsController extends Controller
@@ -27,12 +29,21 @@ class ToolsController extends Controller
     {
         $this->authorize('viewAny', Tool::class);
 
+        $user = request()->user();
         $query = Tool::query()
-            ->visibleTo(request()->user())
+            ->visibleTo($user)
             ->with(['vendor', 'category'])
+            ->when(
+                $user->role === 'customer',
+                fn (Builder $query) => $query->withExists([
+                    'bookings as address_access' => fn (Builder $query) => $query
+                        ->where('customer_id', $user->id)
+                        ->whereIn('status', ['paid', 'active', 'completed']),
+                ]),
+            )
             ->latest();
 
-        return response()->json($query->paginate());
+        return ToolsResource::collection($query->paginate())->response();
     }
 
     public function store(StoreToolRequest $request): JsonResponse
@@ -41,14 +52,16 @@ class ToolsController extends Controller
 
         $tool = Tool::create($request->validated());
 
-        return response()->json($tool->load(['vendor', 'category']), Response::HTTP_CREATED);
+        return (new ToolsResource($tool->load(['vendor', 'category'])))
+            ->response()
+            ->setStatusCode(Response::HTTP_CREATED);
     }
 
     public function show(Tool $tool): JsonResponse
     {
         $this->authorize('view', $tool);
 
-        return response()->json($tool->load(['vendor', 'category', 'images']));
+        return (new ToolsResource($tool->load(['vendor', 'category', 'images'])))->response();
     }
 
     public function update(UpdateToolRequest $request, Tool $tool): JsonResponse
@@ -77,7 +90,7 @@ class ToolsController extends Controller
             return $tool;
         });
 
-        return response()->json($tool->load(['vendor', 'category', 'images']));
+        return (new ToolsResource($tool->load(['vendor', 'category', 'images'])))->response();
     }
 
     public function destroy(Tool $tool): Response

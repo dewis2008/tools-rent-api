@@ -3,6 +3,7 @@
 namespace Modules\Payments\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class UpdatePaymentRequest extends FormRequest
 {
@@ -12,7 +13,14 @@ class UpdatePaymentRequest extends FormRequest
             'booking_id' => ['prohibited'],
             'customer_id' => ['prohibited'],
             'provider' => ['prohibited'],
-            'provider_payment_id' => ['nullable', 'string', 'max:255'],
+            'provider_payment_id' => [
+                'nullable',
+                'string',
+                'max:255',
+                Rule::unique('payments', 'provider_payment_id')
+                    ->where(fn ($query) => $query->where('provider', $this->route('payment')?->provider))
+                    ->ignore($this->route('payment')),
+            ],
             'status' => ['required', 'in:pending,paid,failed,refunded'],
             'amount' => ['prohibited'],
             'currency' => ['prohibited'],

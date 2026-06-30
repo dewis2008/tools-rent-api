@@ -25,14 +25,15 @@ class ToolImageUploadTest extends TestCase
 
     public function test_vendor_can_upload_tool_image_for_own_tool(): void
     {
-        Storage::fake('public');
+        Storage::fake('local');
 
         $vendor = User::factory()->create(['role' => 'vendor']);
         $tool = $this->createToolForVendor($vendor);
+        $token = $vendor->createToken('test-client')->plainTextToken;
 
         $response = $this
             ->withHeaders(['Accept' => 'application/json'])
-            ->withToken($vendor->createToken('test-client')->plainTextToken)
+            ->withToken($token)
             ->post('/api/v1/tool-images', [
                 'tool_id' => $tool->id,
                 'image' => UploadedFile::fake()->image('drill.jpg', 640, 480),
@@ -49,12 +50,69 @@ class ToolImageUploadTest extends TestCase
         $toolImage = ToolImage::query()->firstOrFail();
 
         $this->assertStringStartsWith("tool-images/{$tool->id}/", $toolImage->image_path);
-        Storage::disk('public')->assertExists($toolImage->image_path);
+        Storage::disk('local')->assertExists($toolImage->image_path);
+
+        $fileResponse = $this
+            ->withToken($token)
+            ->get("/api/v1/tool-images/{$toolImage->id}/file")
+            ->assertOk()
+            ->assertHeader('Cache-Control', 'no-store, private')
+            ->assertHeader('Pragma', 'no-cache');
+
+        $this->assertSame(
+            Storage::disk('local')->get($toolImage->image_path),
+            $fileResponse->streamedContent(),
+        );
+    }
+
+    public function test_private_tool_image_file_endpoint_enforces_tool_visibility(): void
+    {
+        Storage::fake('local');
+
+        $vendor = User::factory()->vendor()->create();
+        $tool = $this->createToolForVendor($vendor);
+        $path = "tool-images/{$tool->id}/private.jpg";
+        Storage::disk('local')->put($path, 'private image');
+        $toolImage = ToolImage::create([
+            'tool_id' => $tool->id,
+            'image_path' => $path,
+        ]);
+        $customer = User::factory()->customer()->create();
+
+        $this
+            ->withToken($customer->createToken('customer-client')->plainTextToken)
+            ->get("/api/v1/tool-images/{$toolImage->id}/file")
+            ->assertForbidden();
+    }
+
+    public function test_existing_public_tool_images_are_moved_to_private_storage(): void
+    {
+        Storage::fake('public');
+        Storage::fake('local');
+
+        $vendor = User::factory()->vendor()->create();
+        $tool = $this->createToolForVendor($vendor);
+        $path = "tool-images/{$tool->id}/legacy-public.jpg";
+        ToolImage::create([
+            'tool_id' => $tool->id,
+            'image_path' => $path,
+        ]);
+        Storage::disk('public')->put($path, 'legacy image');
+        $migration = require module_path(
+            'ToolImages',
+            'database/migrations/2026_07_01_010000_move_tool_images_to_private_storage.php',
+        );
+
+        $migration->up();
+
+        Storage::disk('local')->assertExists($path);
+        Storage::disk('public')->assertMissing($path);
+        $this->assertSame('legacy image', Storage::disk('local')->get($path));
     }
 
     public function test_tool_image_upload_rejects_non_images_and_client_supplied_paths(): void
     {
-        Storage::fake('public');
+        Storage::fake('local');
 
         $vendor = User::factory()->create(['role' => 'vendor']);
         $tool = $this->createToolForVendor($vendor);
@@ -77,7 +135,7 @@ class ToolImageUploadTest extends TestCase
 
     public function test_tool_image_requests_reject_malformed_tool_ids_with_validation_errors(): void
     {
-        Storage::fake('public');
+        Storage::fake('local');
 
         $vendor = User::factory()->create(['role' => 'vendor']);
         $tool = $this->createToolForVendor($vendor);
@@ -106,13 +164,13 @@ class ToolImageUploadTest extends TestCase
 
     public function test_updating_tool_image_replaces_stored_file(): void
     {
-        Storage::fake('public');
+        Storage::fake('local');
 
         $vendor = User::factory()->create(['role' => 'vendor']);
         $tool = $this->createToolForVendor($vendor);
         $oldPath = "tool-images/{$tool->id}/old.jpg";
 
-        Storage::disk('public')->put($oldPath, 'old image');
+        Storage::disk('local')->put($oldPath, 'old image');
 
         $toolImage = ToolImage::create([
             'tool_id' => $tool->id,
@@ -133,20 +191,20 @@ class ToolImageUploadTest extends TestCase
 
         $toolImage->refresh();
 
-        Storage::disk('public')->assertMissing($oldPath);
-        Storage::disk('public')->assertExists($toolImage->image_path);
+        Storage::disk('local')->assertMissing($oldPath);
+        Storage::disk('local')->assertExists($toolImage->image_path);
         $this->assertNotSame($oldPath, $toolImage->image_path);
     }
 
     public function test_deleting_tool_image_removes_stored_file(): void
     {
-        Storage::fake('public');
+        Storage::fake('local');
 
         $vendor = User::factory()->create(['role' => 'vendor']);
         $tool = $this->createToolForVendor($vendor);
         $path = "tool-images/{$tool->id}/delete-me.jpg";
 
-        Storage::disk('public')->put($path, 'stored image');
+        Storage::disk('local')->put($path, 'stored image');
 
         $toolImage = ToolImage::create([
             'tool_id' => $tool->id,
@@ -160,18 +218,18 @@ class ToolImageUploadTest extends TestCase
             ->assertNoContent();
 
         $this->assertDatabaseMissing('tool_images', ['id' => $toolImage->id]);
-        Storage::disk('public')->assertMissing($path);
+        Storage::disk('local')->assertMissing($path);
     }
 
     public function test_tool_image_file_is_not_deleted_when_the_database_transaction_rolls_back(): void
     {
-        Storage::fake('public');
+        Storage::fake('local');
 
         $vendor = User::factory()->create(['role' => 'vendor']);
         $tool = $this->createToolForVendor($vendor);
         $path = "tool-images/{$tool->id}/rollback.jpg";
 
-        Storage::disk('public')->put($path, 'stored image');
+        Storage::disk('local')->put($path, 'stored image');
 
         $toolImage = ToolImage::create([
             'tool_id' => $tool->id,
@@ -194,19 +252,19 @@ class ToolImageUploadTest extends TestCase
         ]);
         $this->assertDatabaseHas('tool_images', ['id' => $toolImage->id]);
         $this->assertDatabaseCount('pending_tool_image_file_deletions', 0);
-        Storage::disk('public')->assertExists($path);
+        Storage::disk('local')->assertExists($path);
     }
 
     public function test_replacement_file_is_removed_when_an_outer_transaction_rolls_back(): void
     {
-        Storage::fake('public');
+        Storage::fake('local');
 
         $vendor = User::factory()->create(['role' => 'vendor']);
         $tool = $this->createToolForVendor($vendor);
         $oldPath = "tool-images/{$tool->id}/original.jpg";
         $newPath = null;
 
-        Storage::disk('public')->put($oldPath, 'stored image');
+        Storage::disk('local')->put($oldPath, 'stored image');
 
         $toolImage = ToolImage::create([
             'tool_id' => $tool->id,
@@ -228,8 +286,8 @@ class ToolImageUploadTest extends TestCase
 
         $this->assertSame($oldPath, $toolImage->refresh()->image_path);
         $this->assertDatabaseCount('pending_tool_image_file_deletions', 0);
-        Storage::disk('public')->assertExists($oldPath);
-        Storage::disk('public')->assertMissing($newPath);
+        Storage::disk('local')->assertExists($oldPath);
+        Storage::disk('local')->assertMissing($newPath);
     }
 
     public function test_failed_file_deletion_is_retained_for_retry(): void
@@ -244,7 +302,7 @@ class ToolImageUploadTest extends TestCase
         $disk = Mockery::mock(FilesystemAdapter::class);
 
         $disk->shouldReceive('delete')->once()->with($path)->andReturnFalse();
-        Storage::shouldReceive('disk')->with('public')->andReturn($disk);
+        Storage::shouldReceive('disk')->with('local')->andReturn($disk);
 
         app(ToolImageService::class)->delete($toolImage);
 
@@ -258,10 +316,10 @@ class ToolImageUploadTest extends TestCase
 
     public function test_pending_file_deletions_can_be_retried(): void
     {
-        Storage::fake('public');
+        Storage::fake('local');
 
         $path = 'tool-images/pending/retry.jpg';
-        Storage::disk('public')->put($path, 'stored image');
+        Storage::disk('local')->put($path, 'stored image');
         PendingToolImageFileDeletion::create([
             'image_path' => $path,
             'attempts' => 1,
@@ -274,18 +332,18 @@ class ToolImageUploadTest extends TestCase
             ->assertSuccessful();
 
         $this->assertDatabaseCount('pending_tool_image_file_deletions', 0);
-        Storage::disk('public')->assertMissing($path);
+        Storage::disk('local')->assertMissing($path);
     }
 
     public function test_pending_deletion_does_not_remove_a_referenced_file(): void
     {
-        Storage::fake('public');
+        Storage::fake('local');
 
         $vendor = User::factory()->create(['role' => 'vendor']);
         $tool = $this->createToolForVendor($vendor);
         $path = "tool-images/{$tool->id}/still-referenced.jpg";
 
-        Storage::disk('public')->put($path, 'stored image');
+        Storage::disk('local')->put($path, 'stored image');
         ToolImage::create([
             'tool_id' => $tool->id,
             'image_path' => $path,
@@ -300,18 +358,18 @@ class ToolImageUploadTest extends TestCase
             ->assertSuccessful();
 
         $this->assertDatabaseCount('pending_tool_image_file_deletions', 0);
-        Storage::disk('public')->assertExists($path);
+        Storage::disk('local')->assertExists($path);
     }
 
     public function test_deleting_tool_removes_stored_image_files(): void
     {
-        Storage::fake('public');
+        Storage::fake('local');
 
         $vendor = User::factory()->create(['role' => 'vendor']);
         $tool = $this->createToolForVendor($vendor);
         $path = "tool-images/{$tool->id}/tool-delete.jpg";
 
-        Storage::disk('public')->put($path, 'stored image');
+        Storage::disk('local')->put($path, 'stored image');
 
         $toolImage = ToolImage::create([
             'tool_id' => $tool->id,
@@ -326,18 +384,18 @@ class ToolImageUploadTest extends TestCase
 
         $this->assertSoftDeleted($tool);
         $this->assertDatabaseMissing('tool_images', ['id' => $toolImage->id]);
-        Storage::disk('public')->assertMissing($path);
+        Storage::disk('local')->assertMissing($path);
     }
 
     public function test_deleting_vendor_removes_stored_image_files(): void
     {
-        Storage::fake('public');
+        Storage::fake('local');
 
         $vendor = User::factory()->create(['role' => 'vendor']);
         $tool = $this->createToolForVendor($vendor);
         $path = "tool-images/{$tool->id}/vendor-delete.jpg";
 
-        Storage::disk('public')->put($path, 'stored image');
+        Storage::disk('local')->put($path, 'stored image');
 
         $toolImage = ToolImage::create([
             'tool_id' => $tool->id,
@@ -353,19 +411,19 @@ class ToolImageUploadTest extends TestCase
         $this->assertSoftDeleted($vendor->vendorProfile);
         $this->assertSoftDeleted($tool);
         $this->assertDatabaseMissing('tool_images', ['id' => $toolImage->id]);
-        Storage::disk('public')->assertMissing($path);
+        Storage::disk('local')->assertMissing($path);
     }
 
     public function test_deleting_vendor_user_removes_stored_image_files(): void
     {
-        Storage::fake('public');
+        Storage::fake('local');
 
         $admin = User::factory()->create(['role' => 'admin']);
         $vendor = User::factory()->create(['role' => 'vendor']);
         $tool = $this->createToolForVendor($vendor);
         $path = "tool-images/{$tool->id}/user-delete.jpg";
 
-        Storage::disk('public')->put($path, 'stored image');
+        Storage::disk('local')->put($path, 'stored image');
 
         $toolImage = ToolImage::create([
             'tool_id' => $tool->id,
@@ -379,12 +437,12 @@ class ToolImageUploadTest extends TestCase
             ->assertNoContent();
 
         $this->assertDatabaseMissing('tool_images', ['id' => $toolImage->id]);
-        Storage::disk('public')->assertMissing($path);
+        Storage::disk('local')->assertMissing($path);
     }
 
     public function test_setting_main_image_clears_existing_main_image_for_tool(): void
     {
-        Storage::fake('public');
+        Storage::fake('local');
 
         $vendor = User::factory()->create(['role' => 'vendor']);
         $tool = $this->createToolForVendor($vendor);
@@ -433,7 +491,7 @@ class ToolImageUploadTest extends TestCase
 
     public function test_moving_main_image_clears_existing_main_image_for_target_tool(): void
     {
-        Storage::fake('public');
+        Storage::fake('local');
 
         $vendor = User::factory()->create(['role' => 'vendor']);
         $sourceTool = $this->createToolForVendor($vendor);
@@ -468,7 +526,7 @@ class ToolImageUploadTest extends TestCase
 
     public function test_vendor_cannot_attach_images_to_another_vendors_soft_deleted_tool(): void
     {
-        Storage::fake('public');
+        Storage::fake('local');
 
         $owner = User::factory()->vendor()->create();
         $archivedTool = $this->createToolForVendor($owner);
