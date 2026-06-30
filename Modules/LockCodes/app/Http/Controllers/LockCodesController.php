@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Log;
 use Modules\LockCodes\Http\Requests\StoreLockCodeRequest;
 use Modules\LockCodes\Http\Requests\UpdateLockCodeRequest;
 use Modules\LockCodes\Models\LockCode;
+use Modules\LockCodes\Services\LockCodeService;
 
 class LockCodesController extends Controller
 {
@@ -64,20 +65,23 @@ class LockCodesController extends Controller
         ]);
     }
 
-    public function update(UpdateLockCodeRequest $request, LockCode $lockCode): JsonResponse
-    {
+    public function update(
+        UpdateLockCodeRequest $request,
+        LockCode $lockCode,
+        LockCodeService $lockCodes,
+    ): JsonResponse {
         $this->authorize('update', $lockCode);
 
-        $lockCode->update($request->validated());
+        $lockCode = $lockCodes->update($lockCode, $request->validated(), $request->user());
 
-        return response()->json($lockCode->refresh()->load('booking'));
+        return response()->json($lockCode->load('booking'));
     }
 
-    public function destroy(LockCode $lockCode): Response
+    public function destroy(LockCode $lockCode, LockCodeService $lockCodes): Response
     {
         $this->authorize('delete', $lockCode);
 
-        $lockCode->update(['status' => 'revoked']);
+        $lockCodes->revoke($lockCode, request()->user());
 
         return response()->noContent();
     }
