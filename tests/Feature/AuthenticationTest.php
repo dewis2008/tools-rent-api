@@ -355,6 +355,31 @@ class AuthenticationTest extends TestCase
         $this->assertSame('inactive', $inactiveTool->refresh()->status);
     }
 
+    public function test_vendor_identity_update_requires_reapproval(): void
+    {
+        $vendor = User::factory()->vendor()->create();
+        $profile = VendorProfile::factory()->create([
+            'user_id' => $vendor->id,
+            'verification_status' => 'approved',
+        ]);
+        $tool = Tool::factory()->create([
+            'vendor_id' => $profile->id,
+            'status' => 'active',
+        ]);
+        $token = $vendor->createToken('vendor-client')->plainTextToken;
+
+        $this
+            ->withToken($token)
+            ->patchJson("/api/v1/vendors/{$profile->id}", ['business_name' => 'Changed Legal Identity'])
+            ->assertOk()
+            ->assertJsonPath('business_name', 'Changed Legal Identity')
+            ->assertJsonPath('verification_status', 'pending');
+
+        $this->assertSame('pending', $vendor->refresh()->status);
+        $this->assertSame(0, $vendor->tokens()->count());
+        $this->assertSame('inactive', $tool->refresh()->status);
+    }
+
     public function test_admin_cannot_bypass_vendor_profile_approval(): void
     {
         $vendor = User::factory()->vendor()->create([

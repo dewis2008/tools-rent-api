@@ -13,6 +13,16 @@ use Modules\Tools\Models\Tool;
 
 class ToolsController extends Controller
 {
+    private const ReviewableFields = [
+        'category_id',
+        'title',
+        'description',
+        'price_per_day',
+        'deposit_amount',
+        'city',
+        'address',
+    ];
+
     public function index(): JsonResponse
     {
         $this->authorize('viewAny', Tool::class);
@@ -45,9 +55,29 @@ class ToolsController extends Controller
     {
         $this->authorize('update', $tool);
 
-        $tool->update($request->validated());
+        $validated = $request->validated();
+        $user = $request->user();
+        $tool = DB::transaction(function () use ($tool, $validated, $user): Tool {
+            $tool = Tool::query()->lockForUpdate()->findOrFail($tool->id);
 
-        return response()->json($tool->refresh()->load(['vendor', 'category', 'images']));
+            if (! $user->can('update', $tool)) {
+                throw new AuthorizationException;
+            }
+
+            $tool->fill($validated);
+
+            if ($user->role !== 'admin'
+                && $tool->getOriginal('status') === 'active'
+                && $tool->isDirty(self::ReviewableFields)) {
+                $tool->status = 'pending';
+            }
+
+            $tool->save();
+
+            return $tool;
+        });
+
+        return response()->json($tool->load(['vendor', 'category', 'images']));
     }
 
     public function destroy(Tool $tool): Response
