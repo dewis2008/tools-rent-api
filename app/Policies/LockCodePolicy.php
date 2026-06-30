@@ -63,7 +63,7 @@ class LockCodePolicy
 
         return $booking->isRentalActiveAt($now)
             && $lockCode->valid_from->lte($now)
-            && $lockCode->valid_until->gte($now);
+            && $lockCode->valid_until->gt($now);
     }
 
     public function create(User $user): bool

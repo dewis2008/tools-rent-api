@@ -121,6 +121,6 @@ class Booking extends Model
     public function isWithinRentalWindow(CarbonInterface $dateTime): bool
     {
         return $this->start_at->lte($dateTime)
-            && $this->end_at->gte($dateTime);
+            && $this->end_at->gt($dateTime);
     }
 }
