@@ -11,8 +11,10 @@ class UsersDatabaseSeeder extends Seeder
 {
     public function run(): void
     {
-        if (! config('app.allow_demo_seeding')) {
-            throw new RuntimeException('Demo users can only be seeded when ALLOW_DEMO_SEEDING is enabled.');
+        if (! app()->environment(['local', 'testing']) || ! config('app.allow_demo_seeding')) {
+            throw new RuntimeException(
+                'Demo users can only be seeded in local or testing environments when ALLOW_DEMO_SEEDING is enabled.',
+            );
         }
 
         collect([

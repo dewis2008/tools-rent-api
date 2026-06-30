@@ -4,6 +4,7 @@ namespace Modules\Bookings\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Carbon;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
 use Modules\Bookings\Models\Booking;
 
@@ -12,7 +13,14 @@ class StoreBookingRequest extends FormRequest
     public function rules(): array
     {
         $customerIdRules = $this->user()?->role === 'admin'
-            ? ['required', 'integer', 'exists:users,id']
+            ? [
+                'required',
+                'integer',
+                Rule::exists('users', 'id')
+                    ->where('role', 'customer')
+                    ->where('status', 'active')
+                    ->whereNotNull('email_verified_at'),
+            ]
             : ['prohibited'];
 
         return [
@@ -22,6 +30,7 @@ class StoreBookingRequest extends FormRequest
             'start_at' => ['required', 'date', 'after_or_equal:now'],
             'end_at' => ['required', 'date', 'after:start_at'],
             'status' => ['prohibited'],
+            'expires_at' => ['prohibited'],
             'rental_price' => ['prohibited'],
             'deposit_amount' => ['prohibited'],
             'platform_fee' => ['prohibited'],

@@ -2,6 +2,7 @@
 
 namespace Modules\LockCodes\Models;
 
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -36,6 +37,13 @@ class LockCode extends Model
     protected static function newFactory(): LockCodeFactory
     {
         return LockCodeFactory::new();
+    }
+
+    protected static function booted(): void
+    {
+        static::deleting(function (): void {
+            throw new AuthorizationException(__('Lock codes must be revoked instead of deleted.'));
+        });
     }
 
     public function booking(): BelongsTo

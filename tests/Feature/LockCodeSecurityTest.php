@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\User;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -322,6 +323,92 @@ class LockCodeSecurityTest extends TestCase
 
         $this->assertSame($booking->id, $lockCode->refresh()->booking_id);
         $this->assertDatabaseCount('lock_codes', 1);
+    }
+
+    public function test_deleting_lock_code_revokes_it_without_removing_audit_record(): void
+    {
+        [$vendor, $booking] = $this->createVendorBooking();
+        $lockCode = LockCode::factory()->create([
+            'booking_id' => $booking->id,
+            'status' => 'generated',
+        ]);
+        $token = $vendor->createToken('test-client')->plainTextToken;
+
+        $this
+            ->withToken($token)
+            ->deleteJson("/api/v1/lock-codes/{$lockCode->id}")
+            ->assertNoContent();
+
+        $this->assertDatabaseHas('lock_codes', [
+            'id' => $lockCode->id,
+            'status' => 'revoked',
+        ]);
+
+        $this
+            ->withToken($token)
+            ->getJson("/api/v1/lock-codes/{$lockCode->id}")
+            ->assertOk()
+            ->assertJsonPath('status', 'revoked');
+    }
+
+    public function test_active_lock_code_details_and_status_history_are_immutable(): void
+    {
+        [$vendor, $booking] = $this->createVendorBooking();
+        $lockCode = LockCode::factory()->active()->create([
+            'booking_id' => $booking->id,
+            'code' => '123456',
+        ]);
+        $token = $vendor->createToken('test-client')->plainTextToken;
+
+        $this
+            ->withToken($token)
+            ->patchJson("/api/v1/lock-codes/{$lockCode->id}", ['code' => '654321'])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('code');
+
+        $this
+            ->withToken($token)
+            ->patchJson("/api/v1/lock-codes/{$lockCode->id}", ['status' => 'generated'])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('status');
+
+        $this->assertSame('123456', $lockCode->refresh()->code);
+        $this->assertSame('active', $lockCode->status);
+    }
+
+    public function test_lock_code_cannot_change_after_booking_closes(): void
+    {
+        [$vendor, $booking] = $this->createVendorBooking();
+        $booking->update(['status' => 'completed']);
+        $lockCode = LockCode::factory()->create([
+            'booking_id' => $booking->id,
+            'code' => '123456',
+        ]);
+        $token = $vendor->createToken('test-client')->plainTextToken;
+
+        $this
+            ->withToken($token)
+            ->patchJson("/api/v1/lock-codes/{$lockCode->id}", ['code' => '654321'])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('code');
+
+        $this
+            ->withToken($token)
+            ->deleteJson("/api/v1/lock-codes/{$lockCode->id}")
+            ->assertForbidden();
+
+        $this->assertSame('123456', $lockCode->refresh()->code);
+        $this->assertSame('generated', $lockCode->status);
+    }
+
+    public function test_lock_code_model_rejects_hard_deletion(): void
+    {
+        $lockCode = LockCode::factory()->create();
+
+        $this->expectException(AuthorizationException::class);
+        $this->expectExceptionMessage('Lock codes must be revoked instead of deleted.');
+
+        $lockCode->delete();
     }
 
     /** @return array<string, array{0: string, 1: bool}> */

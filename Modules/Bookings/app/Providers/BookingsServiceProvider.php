@@ -3,6 +3,7 @@
 namespace Modules\Bookings\Providers;
 
 use Illuminate\Console\Scheduling\Schedule;
+use Modules\Bookings\Console\ExpirePendingBookingsCommand;
 use Nwidart\Modules\Support\ModuleServiceProvider;
 
 class BookingsServiceProvider extends ModuleServiceProvider
@@ -22,7 +23,9 @@ class BookingsServiceProvider extends ModuleServiceProvider
      *
      * @var string[]
      */
-    // protected array $commands = [];
+    protected array $commands = [
+        ExpirePendingBookingsCommand::class,
+    ];
 
     /**
      * Provider classes to register.
@@ -34,13 +37,11 @@ class BookingsServiceProvider extends ModuleServiceProvider
         RouteServiceProvider::class,
     ];
 
-    /**
-     * Define module schedules.
-     *
-     * @param  $schedule
-     */
-    // protected function configureSchedules(Schedule $schedule): void
-    // {
-    //     $schedule->command('inspire')->hourly();
-    // }
+    protected function configureSchedules(Schedule $schedule): void
+    {
+        $schedule
+            ->command(ExpirePendingBookingsCommand::class)
+            ->everyMinute()
+            ->withoutOverlapping();
+    }
 }

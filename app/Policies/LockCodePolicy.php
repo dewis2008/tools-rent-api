@@ -10,6 +10,23 @@ class LockCodePolicy
 {
     use HandlesRentalAuthorization;
 
+    public function before(User $user, string $ability): ?bool
+    {
+        if ($user->status !== 'active') {
+            return false;
+        }
+
+        if ($user->role !== 'admin') {
+            return null;
+        }
+
+        if (in_array($ability, ['update', 'delete'], true)) {
+            return null;
+        }
+
+        return true;
+    }
+
     public function viewAny(User $user): bool
     {
         return $user->role === 'customer'
@@ -55,11 +72,30 @@ class LockCodePolicy
 
     public function update(User $user, LockCode $lockCode): bool
     {
-        return $this->ownsVendorProfile($user, $lockCode->booking?->vendor_id);
+        return $this->canManage($user, $lockCode, allowClosedBooking: true);
     }
 
     public function delete(User $user, LockCode $lockCode): bool
     {
-        return $this->ownsVendorProfile($user, $lockCode->booking?->vendor_id);
+        return $this->canManage($user, $lockCode);
+    }
+
+    private function canManage(User $user, LockCode $lockCode, bool $allowClosedBooking = false): bool
+    {
+        if (! $lockCode->booking) {
+            return false;
+        }
+
+        if (! $allowClosedBooking
+            && in_array($lockCode->booking->status, ['completed', 'cancelled'], true)) {
+            return false;
+        }
+
+        if (in_array($lockCode->status, ['expired', 'revoked'], true)) {
+            return false;
+        }
+
+        return $user->role === 'admin'
+            || $this->ownsVendorProfile($user, $lockCode->booking->vendor_id);
     }
 }

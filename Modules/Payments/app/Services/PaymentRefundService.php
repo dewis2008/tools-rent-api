@@ -4,6 +4,7 @@ namespace Modules\Payments\Services;
 
 use Illuminate\Validation\ValidationException;
 use Modules\Payments\Data\PaymentRefundResult;
+use Modules\Payments\Jobs\ProcessPaymentRefund;
 use Modules\Payments\Models\Payment;
 use Throwable;
 
@@ -26,6 +27,11 @@ class PaymentRefundService
         throw ValidationException::withMessages([
             'status' => __('The payment provider does not support automatic refunds.'),
         ]);
+    }
+
+    public function schedule(Payment $payment): void
+    {
+        ProcessPaymentRefund::dispatch($payment->id)->afterCommit();
     }
 
     public function synchronizePendingStripeRefunds(int $limit = 100): int
