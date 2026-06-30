@@ -14,7 +14,6 @@ Install and initialize the application:
 
 ```bash
 composer setup
-php artisan storage:link
 ```
 
 The application uses database-backed queues and scheduled maintenance by default. Run all three processes in separate terminals:
@@ -54,7 +53,9 @@ Restart long-running workers after every deployment so they load the new code:
 php artisan queue:restart
 ```
 
-Production also requires a valid `APP_KEY`, the public storage link, mail configuration for account verification, and `STRIPE_SECRET` when Stripe payments are enabled. Keep `APP_DEBUG=false` outside local development.
+Production also requires a valid `APP_KEY`, mail configuration for account verification, and `STRIPE_SECRET` when Stripe payments are enabled. Keep `APP_DEBUG=false` outside local development.
+
+Tool images are stored on the private `TOOL_IMAGE_DISK` and served through the authenticated `GET /api/v1/tool-images/{toolImage}/file` endpoint. The default `local` disk needs no public storage link.
 
 ## Demo data
 
