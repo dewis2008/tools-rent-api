@@ -21,6 +21,10 @@ class ToolImage extends Model
         'sort_order',
     ];
 
+    protected $hidden = [
+        'main_tool_id',
+    ];
+
     protected function casts(): array
     {
         return [
