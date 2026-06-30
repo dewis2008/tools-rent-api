@@ -147,8 +147,19 @@ class BookingPaymentStateService
                 && $status === 'cancelled';
         }
 
-        return $user->vendorProfile()->whereKey($booking->vendor_id)->exists()
-            && in_array($status, ['active', 'completed', 'cancelled'], true);
+        if (! $user->vendorProfile()->whereKey($booking->vendor_id)->exists()) {
+            return false;
+        }
+
+        if ($status === 'active') {
+            return $booking->isWithinRentalWindow(now());
+        }
+
+        if ($status === 'completed') {
+            return $booking->end_at->lte(now());
+        }
+
+        return $status === 'cancelled';
     }
 
     private function ensurePaymentSupportsBookingStatus(?Payment $payment, string $status): void

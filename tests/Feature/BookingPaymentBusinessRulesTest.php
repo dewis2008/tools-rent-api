@@ -585,9 +585,13 @@ class BookingPaymentBusinessRulesTest extends TestCase
 
     public function test_vendor_can_progress_paid_booking_to_active_and_completed(): void
     {
+        $this->travelTo(now()->startOfSecond());
+
         $vendor = User::factory()->create(['role' => 'vendor']);
         $vendorProfile = $this->createVendorProfile($vendor);
         $booking = $this->createBooking(User::factory()->create(['role' => 'customer']), vendorProfile: $vendorProfile, attributes: [
+            'start_at' => now()->subMinute(),
+            'end_at' => now()->addMinute(),
             'status' => 'paid',
         ]);
         $this->createPayment($booking, ['status' => 'paid']);
@@ -599,11 +603,59 @@ class BookingPaymentBusinessRulesTest extends TestCase
             ->assertOk()
             ->assertJsonPath('status', 'active');
 
+        $this->travelTo($booking->end_at->copy()->addSecond());
+
         $this
             ->withToken($token)
             ->patchJson("/api/v1/bookings/{$booking->id}", ['status' => 'completed'])
             ->assertOk()
             ->assertJsonPath('status', 'completed');
+    }
+
+    public function test_vendor_cannot_progress_booking_outside_its_rental_window(): void
+    {
+        $this->travelTo(now()->startOfSecond());
+
+        $vendor = User::factory()->vendor()->create();
+        $vendorProfile = $this->createVendorProfile($vendor);
+        $customer = User::factory()->customer()->create();
+        $token = $vendor->createToken('test-client')->plainTextToken;
+        $futureBooking = $this->createBooking($customer, vendorProfile: $vendorProfile, attributes: [
+            'status' => 'paid',
+        ]);
+        $this->createPayment($futureBooking, ['status' => 'paid']);
+
+        $this
+            ->withToken($token)
+            ->patchJson("/api/v1/bookings/{$futureBooking->id}", ['status' => 'active'])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('status');
+
+        $activeBooking = $this->createBooking($customer, vendorProfile: $vendorProfile, attributes: [
+            'start_at' => now()->subMinute(),
+            'end_at' => now()->addMinute(),
+            'status' => 'active',
+        ]);
+        $this->createPayment($activeBooking, ['status' => 'paid']);
+
+        $this
+            ->withToken($token)
+            ->patchJson("/api/v1/bookings/{$activeBooking->id}", ['status' => 'completed'])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('status');
+
+        $expiredPaidBooking = $this->createBooking($customer, vendorProfile: $vendorProfile, attributes: [
+            'start_at' => now()->subMinutes(2),
+            'end_at' => now()->subMinute(),
+            'status' => 'paid',
+        ]);
+        $this->createPayment($expiredPaidBooking, ['status' => 'paid']);
+
+        $this
+            ->withToken($token)
+            ->patchJson("/api/v1/bookings/{$expiredPaidBooking->id}", ['status' => 'active'])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('status');
     }
 
     public function test_vendor_cancelling_paid_booking_refunds_payment(): void
