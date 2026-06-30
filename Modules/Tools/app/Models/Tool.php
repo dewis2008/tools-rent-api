@@ -38,6 +38,11 @@ class Tool extends Model
         'status',
     ];
 
+    protected $hidden = [
+        'address',
+        'address_access',
+    ];
+
     protected function casts(): array
     {
         return [

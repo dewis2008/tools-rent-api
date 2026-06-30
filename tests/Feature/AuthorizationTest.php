@@ -301,6 +301,60 @@ class AuthorizationTest extends TestCase
             ->assertForbidden();
     }
 
+    public function test_tool_address_is_only_revealed_to_owners_admins_and_paid_booking_customers(): void
+    {
+        $customer = User::factory()->customer()->create();
+        $vendor = User::factory()->vendor()->create();
+        $vendorProfile = $this->createVendorProfile($vendor);
+        $category = Category::create(['name' => 'Drills', 'slug' => 'drills']);
+        $tool = $this->createTool($vendorProfile, $category);
+        $tool->update([
+            'address' => 'Private pickup address',
+            'status' => 'active',
+        ]);
+        $customerToken = $customer->createToken('customer-client')->plainTextToken;
+
+        $customerIndexResponse = $this
+            ->withToken($customerToken)
+            ->getJson('/api/v1/tools')
+            ->assertOk();
+        $this->assertArrayNotHasKey('address', $customerIndexResponse->json('data.0'));
+
+        $customerShowResponse = $this
+            ->withToken($customerToken)
+            ->getJson("/api/v1/tools/{$tool->id}")
+            ->assertOk();
+        $this->assertArrayNotHasKey('address', $customerShowResponse->json());
+
+        $booking = Booking::create([
+            'tool_id' => $tool->id,
+            'customer_id' => $customer->id,
+            'vendor_id' => $vendorProfile->id,
+            'start_at' => now()->addDay(),
+            'end_at' => now()->addDays(2),
+            'status' => 'paid',
+            'rental_price' => 20,
+            'deposit_amount' => 5,
+            'platform_fee' => 2,
+            'vendor_amount' => 18,
+            'total_amount' => 25,
+        ]);
+
+        $this
+            ->withToken($customerToken)
+            ->getJson("/api/v1/tools/{$tool->id}")
+            ->assertOk()
+            ->assertJsonPath('address', 'Private pickup address');
+
+        $booking->update(['status' => 'cancelled']);
+
+        $cancelledBookingResponse = $this
+            ->withToken($customerToken)
+            ->getJson("/api/v1/tools/{$tool->id}")
+            ->assertOk();
+        $this->assertArrayNotHasKey('address', $cancelledBookingResponse->json());
+    }
+
     public function test_vendor_only_sees_own_unpublished_tools(): void
     {
         $vendor = User::factory()->create(['role' => 'vendor']);
