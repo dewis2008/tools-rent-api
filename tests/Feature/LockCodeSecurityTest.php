@@ -130,6 +130,43 @@ class LockCodeSecurityTest extends TestCase
             ->assertJsonPath('code', '123456');
     }
 
+    public function test_admin_can_only_reveal_lock_code_during_its_active_rental_window(): void
+    {
+        [, $booking] = $this->createVendorBooking();
+        $lockCode = LockCode::factory()->active()->create([
+            'booking_id' => $booking->id,
+            'code' => '123456',
+            'valid_from' => now()->subMinute(),
+            'valid_until' => now()->addMinute(),
+        ]);
+        $admin = User::factory()->admin()->create();
+
+        Log::shouldReceive('info')->once();
+
+        $this
+            ->withToken($admin->createToken('admin-client')->plainTextToken)
+            ->postJson("/api/v1/lock-codes/{$lockCode->id}/reveal")
+            ->assertOk()
+            ->assertJsonPath('code', '123456');
+    }
+
+    public function test_admin_cannot_reveal_inactive_lock_code(): void
+    {
+        [, $booking] = $this->createVendorBooking();
+        $lockCode = LockCode::factory()->create([
+            'booking_id' => $booking->id,
+            'valid_from' => now()->subMinute(),
+            'valid_until' => now()->addMinute(),
+            'status' => 'revoked',
+        ]);
+        $admin = User::factory()->admin()->create();
+
+        $this
+            ->withToken($admin->createToken('admin-client')->plainTextToken)
+            ->postJson("/api/v1/lock-codes/{$lockCode->id}/reveal")
+            ->assertForbidden();
+    }
+
     #[DataProvider('ineligibleBookingProvider')]
     public function test_vendor_cannot_reveal_active_lock_code_for_ineligible_booking(
         string $status,
