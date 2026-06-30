@@ -60,6 +60,10 @@ class Tool extends Model
                 $tool->images()->delete();
             }
         });
+
+        static::deleted(function (): void {
+            app(ToolImageService::class)->processPendingDeletionsAfterCommit();
+        });
     }
 
     public function vendor(): BelongsTo
