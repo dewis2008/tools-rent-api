@@ -32,6 +32,12 @@ class PaymentService
                 ]);
             }
 
+            if ($booking->expires_at?->isPast()) {
+                throw ValidationException::withMessages([
+                    'booking_id' => __('This booking reservation has expired.'),
+                ]);
+            }
+
             if ($booking->payment()->exists()) {
                 throw ValidationException::withMessages([
                     'booking_id' => __('This booking already has a payment.'),

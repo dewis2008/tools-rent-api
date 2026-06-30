@@ -22,6 +22,7 @@ class StoreBookingRequest extends FormRequest
             'start_at' => ['required', 'date', 'after_or_equal:now'],
             'end_at' => ['required', 'date', 'after:start_at'],
             'status' => ['prohibited'],
+            'expires_at' => ['prohibited'],
             'rental_price' => ['prohibited'],
             'deposit_amount' => ['prohibited'],
             'platform_fee' => ['prohibited'],

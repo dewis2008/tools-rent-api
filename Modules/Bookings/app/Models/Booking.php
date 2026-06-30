@@ -31,6 +31,7 @@ class Booking extends Model
         'start_at',
         'end_at',
         'status',
+        'expires_at',
         'rental_price',
         'deposit_amount',
         'platform_fee',
@@ -43,6 +44,7 @@ class Booking extends Model
         return [
             'start_at' => 'datetime',
             'end_at' => 'datetime',
+            'expires_at' => 'datetime',
             'rental_price' => 'decimal:2',
             'deposit_amount' => 'decimal:2',
             'platform_fee' => 'decimal:2',
@@ -54,6 +56,19 @@ class Booking extends Model
     protected static function newFactory(): BookingFactory
     {
         return BookingFactory::new();
+    }
+
+    protected static function booted(): void
+    {
+        static::creating(function (Booking $booking): void {
+            if (($booking->status ?? 'pending') !== 'pending' || $booking->expires_at) {
+                return;
+            }
+
+            $booking->expires_at = now()->addMinutes(
+                (int) config('bookings.pending_expiration_minutes'),
+            );
+        });
     }
 
     public function tool(): BelongsTo

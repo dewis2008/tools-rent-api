@@ -22,6 +22,10 @@ class BookingService
     public function create(array $validated, User $user): Booking
     {
         return DB::transaction(function () use ($validated, $user): Booking {
+            $customerId = $this->customerId($validated, $user);
+
+            $this->ensureCustomerMayBook($customerId);
+
             $tool = Tool::query()->lockForUpdate()->findOrFail($validated['tool_id']);
 
             $this->ensureToolIsActive($tool);
@@ -50,7 +54,7 @@ class BookingService
 
             return Booking::create([
                 'tool_id' => $tool->id,
-                'customer_id' => $this->customerId($validated, $user),
+                'customer_id' => $customerId,
                 'vendor_id' => $tool->vendor_id,
                 'start_at' => $startAt,
                 'end_at' => $endAt,
@@ -76,6 +80,15 @@ class BookingService
 
             $booking->delete();
         });
+    }
+
+    public function expirePending(): int
+    {
+        return Booking::query()
+            ->where('status', 'pending')
+            ->whereNotNull('expires_at')
+            ->where('expires_at', '<=', now())
+            ->update(['status' => 'cancelled']);
     }
 
     private function customerId(array $validated, User $user): int
@@ -135,7 +148,19 @@ class BookingService
     {
         $hasOverlap = Booking::query()
             ->where('tool_id', $toolId)
-            ->whereIn('status', self::BlockingStatuses)
+            ->where(function ($query): void {
+                $query
+                    ->whereIn('status', array_diff(self::BlockingStatuses, ['pending']))
+                    ->orWhere(function ($query): void {
+                        $query
+                            ->where('status', 'pending')
+                            ->where(function ($query): void {
+                                $query
+                                    ->whereNull('expires_at')
+                                    ->orWhere('expires_at', '>', now());
+                            });
+                    });
+            })
             ->where('start_at', '<', $endAt)
             ->where('end_at', '>', $startAt)
             ->lockForUpdate()
@@ -146,6 +171,29 @@ class BookingService
                 'start_at' => __('The selected tool is not available for this period.'),
             ]);
         }
+    }
+
+    private function ensureCustomerMayBook(int $customerId): void
+    {
+        User::query()->lockForUpdate()->findOrFail($customerId);
+
+        $pendingBookings = Booking::query()
+            ->where('customer_id', $customerId)
+            ->where('status', 'pending')
+            ->where(function ($query): void {
+                $query
+                    ->whereNull('expires_at')
+                    ->orWhere('expires_at', '>', now());
+            })
+            ->count();
+
+        if ($pendingBookings < (int) config('bookings.max_pending_per_customer')) {
+            return;
+        }
+
+        throw ValidationException::withMessages([
+            'tool_id' => __('You have reached the maximum number of pending bookings.'),
+        ]);
     }
 
     private function ensureVendorIsEligible(Tool $tool): void

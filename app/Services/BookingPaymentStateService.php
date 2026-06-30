@@ -161,6 +161,12 @@ class BookingPaymentStateService
 
     private function ensureBookingSupportsPaymentStatus(Booking $booking, string $status): void
     {
+        if ($status === 'paid' && $booking->expires_at?->isPast()) {
+            throw ValidationException::withMessages([
+                'status' => __('The booking reservation has expired.'),
+            ]);
+        }
+
         if (in_array($status, ['paid', 'pending'], true) && $booking->status !== 'pending') {
             throw ValidationException::withMessages([
                 'status' => __("A {$booking->status} booking cannot have a {$status} payment."),

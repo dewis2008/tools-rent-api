@@ -48,6 +48,8 @@ class BookingPaymentBusinessRulesTest extends TestCase
             ->assertJsonPath('platform_fee', '4.00')
             ->assertJsonPath('vendor_amount', '36.00')
             ->assertJsonPath('total_amount', '50.00');
+
+        $this->assertNotNull($response->json('expires_at'));
     }
 
     public function test_customer_cannot_book_non_active_tool(): void
@@ -246,6 +248,96 @@ class BookingPaymentBusinessRulesTest extends TestCase
             ]);
 
         $response->assertCreated();
+    }
+
+    public function test_expired_pending_bookings_do_not_block_availability_and_are_cancelled(): void
+    {
+        $customer = User::factory()->customer()->create();
+        $vendorProfile = $this->createVendorProfile(User::factory()->vendor()->create());
+        $category = Category::create(['name' => 'Drills', 'slug' => 'drills']);
+        $tool = $this->createTool($vendorProfile, $category);
+        $expiredBooking = $this->createBooking($customer, $tool, $vendorProfile, [
+            'start_at' => now()->addDay(),
+            'end_at' => now()->addDays(3),
+            'expires_at' => now()->subMinute(),
+        ]);
+
+        $this
+            ->withToken($customer->createToken('test-client')->plainTextToken)
+            ->postJson('/api/v1/bookings', [
+                'tool_id' => $tool->id,
+                'start_at' => now()->addDays(2)->toDateTimeString(),
+                'end_at' => now()->addDays(4)->toDateTimeString(),
+            ])
+            ->assertCreated();
+
+        $this->artisan('bookings:expire-pending')
+            ->expectsOutput('Expired 1 pending bookings.')
+            ->assertSuccessful();
+
+        $this->assertSame('cancelled', $expiredBooking->refresh()->status);
+    }
+
+    public function test_customer_cannot_exceed_pending_booking_limit(): void
+    {
+        config()->set('bookings.max_pending_per_customer', 2);
+
+        $customer = User::factory()->customer()->create();
+        $vendorProfile = $this->createVendorProfile(User::factory()->vendor()->create());
+        $category = Category::create(['name' => 'Drills', 'slug' => 'drills']);
+
+        foreach (range(1, 2) as $index) {
+            $this->createBooking(
+                $customer,
+                $this->createTool($vendorProfile, $category),
+                $vendorProfile,
+            );
+        }
+
+        $tool = $this->createTool($vendorProfile, $category);
+
+        $this
+            ->withToken($customer->createToken('test-client')->plainTextToken)
+            ->postJson('/api/v1/bookings', [
+                'tool_id' => $tool->id,
+                'start_at' => now()->addDay()->toDateTimeString(),
+                'end_at' => now()->addDays(2)->toDateTimeString(),
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('tool_id');
+    }
+
+    public function test_expired_pending_booking_cannot_be_paid(): void
+    {
+        $customer = User::factory()->customer()->create();
+        $booking = $this->createBooking($customer, attributes: [
+            'expires_at' => now()->subMinute(),
+        ]);
+
+        $this
+            ->withToken($customer->createToken('test-client')->plainTextToken)
+            ->postJson('/api/v1/payments', [
+                'booking_id' => $booking->id,
+                'provider' => 'demo',
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('booking_id');
+    }
+
+    public function test_expired_pending_booking_payment_cannot_be_marked_paid(): void
+    {
+        $booking = $this->createBooking(User::factory()->customer()->create(), attributes: [
+            'expires_at' => now()->subMinute(),
+        ]);
+
+        $payment = $this->createPayment($booking);
+        $admin = User::factory()->admin()->create();
+
+        $this
+            ->withToken($admin->createToken('test-client')->plainTextToken)
+            ->patchJson("/api/v1/payments/{$payment->id}", ['status' => 'paid'])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('status');
     }
 
     public function test_customer_can_only_cancel_pending_booking(): void
