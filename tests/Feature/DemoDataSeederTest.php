@@ -91,12 +91,25 @@ class DemoDataSeederTest extends TestCase
             $this->fail('Expected demo user seeding to be rejected.');
         } catch (RuntimeException $exception) {
             $this->assertSame(
-                'Demo users can only be seeded when ALLOW_DEMO_SEEDING is enabled.',
+                'Demo users can only be seeded in local or testing environments when ALLOW_DEMO_SEEDING is enabled.',
                 $exception->getMessage(),
             );
         }
 
         $this->assertDatabaseCount('users', 0);
+    }
+
+    public function test_demo_users_cannot_be_seeded_in_production_even_when_enabled(): void
+    {
+        $this->app->detectEnvironment(fn (): string => 'production');
+        config()->set('app.allow_demo_seeding', true);
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage(
+            'Demo users can only be seeded in local or testing environments when ALLOW_DEMO_SEEDING is enabled.',
+        );
+
+        (new UsersDatabaseSeeder)->run();
     }
 
     public function test_booking_seeder_reuses_existing_demo_booking_when_status_changes(): void
