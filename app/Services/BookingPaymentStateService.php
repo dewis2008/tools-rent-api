@@ -24,7 +24,7 @@ class BookingPaymentStateService
         'paid' => ['refunded'],
         'failed' => ['pending'],
         'refund_pending' => [],
-        'refund_failed' => [],
+        'refund_failed' => ['refunded'],
         'refunded' => [],
     ];
 
@@ -103,7 +103,7 @@ class BookingPaymentStateService
                 'status' => $status,
             ];
 
-            if ($payment->status === 'paid' && $status === 'refunded') {
+            if (in_array($payment->status, ['paid', 'refund_failed'], true) && $status === 'refunded') {
                 $refund = $this->paymentRefunds->refund($payment);
                 $updates = $refund->paymentUpdates();
                 $status = $refund->paymentStatus;

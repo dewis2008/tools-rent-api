@@ -31,7 +31,7 @@ class StripePaymentService
                     ],
                 ],
                 [
-                    'idempotency_key' => "payment-{$payment->id}-refund",
+                    'idempotency_key' => $this->refundIdempotencyKey($payment),
                 ],
             );
         } catch (ApiErrorException $exception) {
@@ -42,15 +42,7 @@ class StripePaymentService
             ]);
         }
 
-        $result = $this->refundResult($refund);
-
-        if ($result->paymentStatus === 'refund_failed') {
-            throw ValidationException::withMessages([
-                'status' => __('Stripe rejected the refund request.'),
-            ]);
-        }
-
-        return $result;
+        return $this->refundResult($refund);
     }
 
     public function retrieveRefund(string $refundId): PaymentRefundResult
@@ -91,5 +83,12 @@ class StripePaymentService
         };
 
         return new PaymentRefundResult($paymentStatus, $refund->id);
+    }
+
+    private function refundIdempotencyKey(Payment $payment): string
+    {
+        $attempt = $payment->provider_refund_id ?: 'initial';
+
+        return "payment-{$payment->id}-refund-{$attempt}";
     }
 }
