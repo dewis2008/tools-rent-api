@@ -70,6 +70,13 @@ class User extends Authenticatable implements MustVerifyEmailContract
         return $this->hasMany(Payment::class, 'customer_id');
     }
 
+    public function isEligibleVendor(): bool
+    {
+        return $this->role === 'vendor'
+            && $this->status === 'active'
+            && $this->hasVerifiedEmail();
+    }
+
     public function hasBookingHistory(): bool
     {
         if ($this->customerBookings()->withTrashed()->exists()) {

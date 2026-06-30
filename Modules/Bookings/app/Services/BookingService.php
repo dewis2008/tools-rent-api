@@ -25,7 +25,7 @@ class BookingService
             $tool = Tool::query()->lockForUpdate()->findOrFail($validated['tool_id']);
 
             $this->ensureToolIsActive($tool);
-            $this->ensureVendorIsApproved($tool);
+            $this->ensureVendorIsEligible($tool);
 
             $startAt = Carbon::parse($validated['start_at']);
             $endAt = Carbon::parse($validated['end_at']);
@@ -116,9 +116,9 @@ class BookingService
         }
     }
 
-    private function ensureVendorIsApproved(Tool $tool): void
+    private function ensureVendorIsEligible(Tool $tool): void
     {
-        if ($tool->vendor()->where('verification_status', 'approved')->exists()) {
+        if ($tool->vendor()->eligibleForRentals()->exists()) {
             return;
         }
 

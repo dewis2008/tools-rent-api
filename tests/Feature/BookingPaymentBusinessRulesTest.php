@@ -15,6 +15,7 @@ use Modules\Payments\Models\Payment;
 use Modules\Payments\Services\StripePaymentService;
 use Modules\Tools\Models\Tool;
 use Modules\Vendors\Models\VendorProfile;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 class BookingPaymentBusinessRulesTest extends TestCase
@@ -96,6 +97,43 @@ class BookingPaymentBusinessRulesTest extends TestCase
         }
 
         $this->assertDatabaseCount('bookings', 0);
+    }
+
+    #[DataProvider('ineligibleVendorAccountProvider')]
+    public function test_customer_cannot_view_or_book_tool_from_ineligible_vendor_account(array $attributes): void
+    {
+        $vendor = User::factory()->create([
+            'role' => 'vendor',
+            'status' => 'active',
+            'email_verified_at' => now(),
+            ...$attributes,
+        ]);
+        $vendorProfile = $this->createVendorProfile($vendor);
+        $category = Category::create(['name' => 'Drills', 'slug' => 'drills']);
+        $tool = $this->createTool($vendorProfile, $category);
+        $customer = User::factory()->customer()->create();
+        $token = $customer->createToken('test-client')->plainTextToken;
+
+        $this
+            ->withToken($token)
+            ->getJson('/api/v1/tools')
+            ->assertOk()
+            ->assertJsonPath('data', []);
+
+        $this
+            ->withToken($token)
+            ->getJson("/api/v1/tools/{$tool->id}")
+            ->assertForbidden();
+
+        $this
+            ->withToken($token)
+            ->postJson('/api/v1/bookings', [
+                'tool_id' => $tool->id,
+                'start_at' => now()->addDay()->toDateTimeString(),
+                'end_at' => now()->addDays(2)->toDateTimeString(),
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('tool_id');
     }
 
     public function test_booking_rejects_overlapping_active_reservations(): void
@@ -638,6 +676,16 @@ class BookingPaymentBusinessRulesTest extends TestCase
         $response
             ->assertUnprocessable()
             ->assertJsonValidationErrors('status');
+    }
+
+    public static function ineligibleVendorAccountProvider(): array
+    {
+        return [
+            'blocked account' => [['status' => 'blocked']],
+            'pending account' => [['status' => 'pending']],
+            'non-vendor account' => [['role' => 'customer']],
+            'unverified account' => [['email_verified_at' => null]],
+        ];
     }
 
     private function createVendorProfile(User $user): VendorProfile

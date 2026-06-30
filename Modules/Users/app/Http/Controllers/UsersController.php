@@ -8,6 +8,7 @@ use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\DB;
 use Modules\Users\Http\Requests\StoreUserRequest;
 use Modules\Users\Http\Requests\UpdateUserRequest;
 
@@ -42,26 +43,36 @@ class UsersController extends Controller
     {
         $this->authorize('update', $user);
 
-        $validated = $request->validated();
-        $user->fill($validated);
+        $emailChanged = DB::transaction(function () use ($request, $user): bool {
+            $validated = $request->validated();
+            $user->fill($validated);
 
-        $emailChanged = $user->isDirty('email');
-        $authenticationOrAuthorizationChanged = $user->isDirty([
-            'email',
-            'password',
-            'role',
-        ]);
+            $emailChanged = $user->isDirty('email');
+            $authenticationOrAuthorizationChanged = $user->isDirty([
+                'email',
+                'password',
+                'role',
+            ]);
 
-        if ($emailChanged) {
-            $user->forceFill(['email_verified_at' => null]);
-        }
+            if ($emailChanged) {
+                $user->forceFill(['email_verified_at' => null]);
+            }
 
-        $user->save();
+            $user->save();
 
-        if ($authenticationOrAuthorizationChanged
-            || (array_key_exists('status', $validated) && $validated['status'] !== 'active')) {
-            $user->tokens()->delete();
-        }
+            if (! $user->isEligibleVendor()) {
+                $user->vendorProfile?->tools()
+                    ->where('status', 'active')
+                    ->update(['status' => 'inactive']);
+            }
+
+            if ($authenticationOrAuthorizationChanged
+                || (array_key_exists('status', $validated) && $validated['status'] !== 'active')) {
+                $user->tokens()->delete();
+            }
+
+            return $emailChanged;
+        });
 
         if ($emailChanged) {
             $user->sendEmailVerificationNotification();
