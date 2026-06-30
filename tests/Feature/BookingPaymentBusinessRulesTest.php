@@ -99,6 +99,68 @@ class BookingPaymentBusinessRulesTest extends TestCase
         $this->assertDatabaseCount('bookings', 0);
     }
 
+    public function test_tool_prices_are_bounded_to_supported_booking_amounts(): void
+    {
+        $vendor = User::factory()->vendor()->create();
+        $vendorProfile = $this->createVendorProfile($vendor);
+        $category = Category::create(['name' => 'Drills', 'slug' => 'drills']);
+
+        $this
+            ->withToken($vendor->createToken('test-client')->plainTextToken)
+            ->postJson('/api/v1/tools', [
+                'vendor_id' => $vendorProfile->id,
+                'category_id' => $category->id,
+                'title' => 'Overflow drill',
+                'price_per_day' => Tool::MaxPricePerDay + 1,
+                'deposit_amount' => Tool::MaxDepositAmount + 1,
+                'city' => 'Vilnius',
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['price_per_day', 'deposit_amount']);
+
+        $this->assertDatabaseCount('tools', 0);
+    }
+
+    public function test_booking_rejects_rental_period_longer_than_supported_maximum(): void
+    {
+        $customer = User::factory()->customer()->create();
+        $tool = Tool::factory()->create();
+        $startAt = now()->addDay();
+
+        $this
+            ->withToken($customer->createToken('test-client')->plainTextToken)
+            ->postJson('/api/v1/bookings', [
+                'tool_id' => $tool->id,
+                'start_at' => $startAt->toDateTimeString(),
+                'end_at' => $startAt->copy()->addDays(Booking::MaxRentalDays + 1)->toDateTimeString(),
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('end_at');
+
+        $this->assertDatabaseCount('bookings', 0);
+    }
+
+    public function test_booking_service_rejects_existing_tool_price_that_overflows_schema(): void
+    {
+        $customer = User::factory()->customer()->create();
+        $tool = Tool::factory()->create([
+            'price_per_day' => Booking::MaxMoneyAmount,
+        ]);
+        $startAt = now()->addDay();
+
+        $this
+            ->withToken($customer->createToken('test-client')->plainTextToken)
+            ->postJson('/api/v1/bookings', [
+                'tool_id' => $tool->id,
+                'start_at' => $startAt->toDateTimeString(),
+                'end_at' => $startAt->copy()->addDays(2)->toDateTimeString(),
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('tool_id');
+
+        $this->assertDatabaseCount('bookings', 0);
+    }
+
     #[DataProvider('ineligibleVendorAccountProvider')]
     public function test_customer_cannot_view_or_book_tool_from_ineligible_vendor_account(array $attributes): void
     {

@@ -3,6 +3,7 @@
 namespace Modules\Tools\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Modules\Tools\Models\Tool;
 
 class UpdateToolRequest extends FormRequest
 {
@@ -13,8 +14,8 @@ class UpdateToolRequest extends FormRequest
             'category_id' => ['sometimes', 'required', 'integer', 'exists:categories,id'],
             'title' => ['sometimes', 'required', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
-            'price_per_day' => ['sometimes', 'required', 'numeric', 'min:0'],
-            'deposit_amount' => ['sometimes', 'required', 'numeric', 'min:0'],
+            'price_per_day' => ['sometimes', 'required', 'numeric', 'min:0', 'max:'.Tool::MaxPricePerDay],
+            'deposit_amount' => ['sometimes', 'required', 'numeric', 'min:0', 'max:'.Tool::MaxDepositAmount],
             'city' => ['sometimes', 'required', 'string', 'max:100'],
             'address' => ['nullable', 'string', 'max:255'],
             'status' => ['sometimes', 'required', 'in:pending,active,inactive,rejected'],

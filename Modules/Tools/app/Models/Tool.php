@@ -19,6 +19,10 @@ use Modules\Vendors\Models\VendorProfile;
 
 class Tool extends Model
 {
+    public const MaxPricePerDay = 100_000;
+
+    public const MaxDepositAmount = 1_000_000;
+
     use HasFactory;
     use SoftDeletes;
 

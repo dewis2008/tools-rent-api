@@ -17,6 +17,10 @@ use Modules\Vendors\Models\VendorProfile;
 
 class Booking extends Model
 {
+    public const MaxRentalDays = 365;
+
+    public const MaxMoneyAmount = 99_999_999.99;
+
     use HasFactory;
     use SoftDeletes;
 

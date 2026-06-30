@@ -30,6 +30,7 @@ class BookingService
             $startAt = Carbon::parse($validated['start_at']);
             $endAt = Carbon::parse($validated['end_at']);
 
+            $this->ensureRentalDurationIsAllowed($startAt, $endAt);
             $this->ensureToolIsAvailable($tool->id, $startAt, $endAt);
 
             $rentalDays = $this->rentalDays($startAt, $endAt);
@@ -37,6 +38,15 @@ class BookingService
             $depositAmount = round((float) $tool->deposit_amount, 2);
             $platformFee = round($rentalPrice * 0.10, 2);
             $vendorAmount = round($rentalPrice - $platformFee, 2);
+            $amounts = [
+                'rental_price' => $rentalPrice,
+                'deposit_amount' => $depositAmount,
+                'platform_fee' => $platformFee,
+                'vendor_amount' => $vendorAmount,
+                'total_amount' => round($rentalPrice + $depositAmount, 2),
+            ];
+
+            $this->ensureAmountsFitSchema($amounts);
 
             return Booking::create([
                 'tool_id' => $tool->id,
@@ -45,11 +55,7 @@ class BookingService
                 'start_at' => $startAt,
                 'end_at' => $endAt,
                 'status' => 'pending',
-                'rental_price' => $rentalPrice,
-                'deposit_amount' => $depositAmount,
-                'platform_fee' => $platformFee,
-                'vendor_amount' => $vendorAmount,
-                'total_amount' => round($rentalPrice + $depositAmount, 2),
+                ...$amounts,
             ]);
         });
     }
@@ -86,6 +92,32 @@ class BookingService
         $hours = $startAt->diffInHours($endAt);
 
         return max(1, (int) ceil($hours / 24));
+    }
+
+    private function ensureRentalDurationIsAllowed(Carbon $startAt, Carbon $endAt): void
+    {
+        if ($endAt->gt($startAt) && $endAt->lte($startAt->copy()->addDays(Booking::MaxRentalDays))) {
+            return;
+        }
+
+        throw ValidationException::withMessages([
+            'end_at' => __('A booking must end after it starts and cannot exceed :days rental days.', [
+                'days' => Booking::MaxRentalDays,
+            ]),
+        ]);
+    }
+
+    private function ensureAmountsFitSchema(array $amounts): void
+    {
+        foreach ($amounts as $amount) {
+            if (is_finite($amount) && $amount >= 0 && $amount <= Booking::MaxMoneyAmount) {
+                continue;
+            }
+
+            throw ValidationException::withMessages([
+                'tool_id' => __('The selected tool price exceeds the supported booking total.'),
+            ]);
+        }
     }
 
     private function ensureToolIsActive(Tool $tool): void
