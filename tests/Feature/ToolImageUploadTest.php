@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\User;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -408,6 +409,26 @@ class ToolImageUploadTest extends TestCase
 
         $this->assertFalse($oldMain->refresh()->is_main);
         $this->assertTrue(ToolImage::query()->whereKey($response->json('id'))->firstOrFail()->is_main);
+    }
+
+    public function test_database_rejects_multiple_main_images_for_the_same_tool(): void
+    {
+        $vendor = User::factory()->create(['role' => 'vendor']);
+        $tool = $this->createToolForVendor($vendor);
+
+        ToolImage::create([
+            'tool_id' => $tool->id,
+            'image_path' => "tool-images/{$tool->id}/first-main.jpg",
+            'is_main' => true,
+        ]);
+
+        $this->expectException(UniqueConstraintViolationException::class);
+
+        ToolImage::create([
+            'tool_id' => $tool->id,
+            'image_path' => "tool-images/{$tool->id}/second-main.jpg",
+            'is_main' => true,
+        ]);
     }
 
     public function test_moving_main_image_clears_existing_main_image_for_target_tool(): void

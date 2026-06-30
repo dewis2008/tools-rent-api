@@ -29,6 +29,7 @@ class ToolImageService
                 $this->deleteFileAfterRollback($path);
 
                 if ($attributes['is_main'] ?? false) {
+                    $this->lockTool((int) $attributes['tool_id']);
                     $this->clearMainImage((int) $attributes['tool_id']);
                 }
 
@@ -71,6 +72,7 @@ class ToolImageService
                 }
 
                 if ($shouldBeMain) {
+                    $this->lockTool($toolId);
                     $this->clearMainImage($toolId, $toolImage->id);
                 }
 
@@ -162,6 +164,11 @@ class ToolImageService
             ->where('tool_id', $toolId)
             ->when($exceptId, fn ($query) => $query->whereKeyNot($exceptId))
             ->update(['is_main' => false]);
+    }
+
+    private function lockTool(int $toolId): void
+    {
+        Tool::query()->lockForUpdate()->findOrFail($toolId);
     }
 
     private function deleteImageFiles(Builder $query): void

@@ -119,6 +119,7 @@ class DemoDataSeederTest extends TestCase
         ]);
         $demoTool = Tool::query()->where('title', 'Cordless Hammer Drill')->firstOrFail();
 
+        $demoTool->images()->update(['is_main' => false]);
         ToolImage::factory()->main()->create([
             'tool_id' => $demoTool->id,
             'sort_order' => 7,
