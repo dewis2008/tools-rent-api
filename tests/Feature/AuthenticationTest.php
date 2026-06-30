@@ -632,6 +632,30 @@ class AuthenticationTest extends TestCase
         $this->assertSame(1, $admin->tokens()->count());
     }
 
+    public function test_blocking_vendor_deactivates_active_tools(): void
+    {
+        $admin = User::factory()->admin()->create();
+        $vendor = User::factory()->vendor()->create();
+        $vendorProfile = VendorProfile::factory()->create([
+            'user_id' => $vendor->id,
+            'verification_status' => 'approved',
+        ]);
+        $tool = Tool::factory()->create([
+            'vendor_id' => $vendorProfile->id,
+            'status' => 'active',
+        ]);
+
+        $this
+            ->withToken($admin->createToken('admin-client')->plainTextToken)
+            ->patchJson("/api/v1/users/{$vendor->id}", [
+                'status' => 'blocked',
+            ])
+            ->assertOk()
+            ->assertJsonPath('status', 'blocked');
+
+        $this->assertSame('inactive', $tool->refresh()->status);
+    }
+
     public function test_updating_email_requires_verification_and_revokes_existing_tokens(): void
     {
         Notification::fake();

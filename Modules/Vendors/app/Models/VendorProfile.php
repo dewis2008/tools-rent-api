@@ -4,6 +4,7 @@ namespace Modules\Vendors\Models;
 
 use App\Models\User;
 use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -74,6 +75,18 @@ class VendorProfile extends Model
     public function bookings(): HasMany
     {
         return $this->hasMany(Booking::class, 'vendor_id');
+    }
+
+    public function scopeEligibleForRentals(Builder $query): Builder
+    {
+        return $query
+            ->where('verification_status', 'approved')
+            ->whereHas('user', function (Builder $query): void {
+                $query
+                    ->where('role', 'vendor')
+                    ->where('status', 'active')
+                    ->whereNotNull('email_verified_at');
+            });
     }
 
     public function hasBookingHistory(): bool

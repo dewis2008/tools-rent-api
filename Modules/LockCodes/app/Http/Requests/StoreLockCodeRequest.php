@@ -4,6 +4,7 @@ namespace Modules\LockCodes\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Carbon;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
 use Modules\Bookings\Models\Booking;
 use Modules\LockCodes\Http\Requests\Concerns\ValidatesLockCodeConfiguration;
@@ -16,7 +17,12 @@ class StoreLockCodeRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'booking_id' => ['required', 'integer', 'exists:bookings,id', 'unique:lock_codes,booking_id'],
+            'booking_id' => [
+                'required',
+                'integer',
+                Rule::exists('bookings', 'id')->withoutTrashed(),
+                'unique:lock_codes,booking_id',
+            ],
             'code' => ['required', 'string', 'max:20'],
             'valid_from' => ['required', 'date'],
             'valid_until' => ['required', 'date', 'after:valid_from'],

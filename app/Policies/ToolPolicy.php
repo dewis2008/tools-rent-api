@@ -17,7 +17,7 @@ class ToolPolicy
 
     public function view(User $user, Tool $tool): bool
     {
-        if ($tool->status === 'active') {
+        if ($tool->status === 'active' && $tool->vendor()->eligibleForRentals()->exists()) {
             return true;
         }
 

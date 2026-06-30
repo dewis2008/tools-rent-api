@@ -127,6 +127,27 @@ class AuthorizationTest extends TestCase
         ]);
     }
 
+    public function test_admin_cannot_create_vendor_profile_for_non_vendor_account(): void
+    {
+        $admin = User::factory()->admin()->create();
+        $token = $admin->createToken('admin-client')->plainTextToken;
+
+        foreach (['customer', 'admin'] as $role) {
+            $user = User::factory()->create(['role' => $role]);
+
+            $this
+                ->withToken($token)
+                ->postJson('/api/v1/vendors', [
+                    'user_id' => $user->id,
+                    'business_name' => 'Invalid Vendor',
+                ])
+                ->assertUnprocessable()
+                ->assertJsonValidationErrors('user_id');
+        }
+
+        $this->assertDatabaseCount('vendor_profiles', 0);
+    }
+
     public function test_customer_cannot_view_vendor_profiles(): void
     {
         $customer = User::factory()->create(['role' => 'customer']);

@@ -466,6 +466,44 @@ class ToolImageUploadTest extends TestCase
         $this->assertSame($targetTool->id, $movingMain->tool_id);
     }
 
+    public function test_vendor_cannot_attach_images_to_another_vendors_soft_deleted_tool(): void
+    {
+        Storage::fake('public');
+
+        $owner = User::factory()->vendor()->create();
+        $archivedTool = $this->createToolForVendor($owner);
+        $archivedTool->delete();
+
+        $vendor = User::factory()->vendor()->create();
+        $sourceTool = $this->createToolForVendor($vendor, slug: 'saws');
+        $toolImage = ToolImage::create([
+            'tool_id' => $sourceTool->id,
+            'image_path' => "tool-images/{$sourceTool->id}/existing.jpg",
+        ]);
+        $token = $vendor->createToken('test-client')->plainTextToken;
+
+        $this
+            ->withHeaders(['Accept' => 'application/json'])
+            ->withToken($token)
+            ->post('/api/v1/tool-images', [
+                'tool_id' => $archivedTool->id,
+                'image' => UploadedFile::fake()->image('archived.jpg', 640, 480),
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('tool_id');
+
+        $this
+            ->withToken($token)
+            ->patchJson("/api/v1/tool-images/{$toolImage->id}", [
+                'tool_id' => $archivedTool->id,
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('tool_id');
+
+        $this->assertSame($sourceTool->id, $toolImage->refresh()->tool_id);
+        $this->assertDatabaseCount('tool_images', 1);
+    }
+
     private function createToolForVendor(User $vendor, string $slug = 'drills'): Tool
     {
         $vendorProfile = VendorProfile::firstOrCreate(

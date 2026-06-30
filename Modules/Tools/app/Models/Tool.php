@@ -19,6 +19,10 @@ use Modules\Vendors\Models\VendorProfile;
 
 class Tool extends Model
 {
+    public const MaxPricePerDay = 100_000;
+
+    public const MaxDepositAmount = 1_000_000;
+
     use HasFactory;
     use SoftDeletes;
 
@@ -98,12 +102,12 @@ class Tool extends Model
         }
 
         if ($user->role !== 'vendor') {
-            return $query->where('status', 'active');
+            return $query->publiclyAvailable();
         }
 
         return $query->where(function (Builder $query) use ($user): void {
             $query
-                ->where('status', 'active')
+                ->publiclyAvailable()
                 ->orWhereIn(
                     'vendor_id',
                     $user->vendorProfile()
@@ -111,5 +115,12 @@ class Tool extends Model
                         ->select('id'),
                 );
         });
+    }
+
+    public function scopePubliclyAvailable(Builder $query): Builder
+    {
+        return $query
+            ->where('status', 'active')
+            ->whereHas('vendor', fn (Builder $query) => $query->eligibleForRentals());
     }
 }

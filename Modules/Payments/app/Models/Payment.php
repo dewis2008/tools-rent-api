@@ -18,6 +18,7 @@ class Payment extends Model
         'customer_id',
         'provider',
         'provider_payment_id',
+        'provider_refund_id',
         'status',
         'amount',
         'currency',

@@ -3,6 +3,7 @@
 namespace Modules\ToolImages\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 use Modules\ToolImages\Models\ToolImage;
 use Modules\Tools\Models\Tool;
 
@@ -11,7 +12,7 @@ class StoreToolImageRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'tool_id' => ['required', 'integer', 'exists:tools,id'],
+            'tool_id' => ['required', 'integer', Rule::exists('tools', 'id')->withoutTrashed()],
             'image' => ['required', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
             'image_path' => ['prohibited'],
             'is_main' => ['sometimes', 'required', 'boolean'],

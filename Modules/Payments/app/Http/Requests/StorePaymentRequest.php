@@ -13,7 +13,7 @@ class StorePaymentRequest extends FormRequest
         return [
             'booking_id' => ['required', 'integer', 'exists:bookings,id', 'unique:payments,booking_id'],
             'customer_id' => ['prohibited'],
-            'provider' => ['sometimes', 'required', 'in:demo,stripe,paysera,manual'],
+            'provider' => ['sometimes', 'required', 'in:demo,stripe,manual'],
             'provider_payment_id' => ['nullable', 'string', 'max:255'],
             'status' => ['prohibited'],
             'amount' => ['prohibited'],

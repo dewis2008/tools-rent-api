@@ -6,12 +6,16 @@ use App\Models\User;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Mockery;
 use Modules\Bookings\Models\Booking;
 use Modules\Categories\Models\Category;
 use Modules\LockCodes\Models\LockCode;
+use Modules\Payments\Data\PaymentRefundResult;
 use Modules\Payments\Models\Payment;
+use Modules\Payments\Services\StripePaymentService;
 use Modules\Tools\Models\Tool;
 use Modules\Vendors\Models\VendorProfile;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 class BookingPaymentBusinessRulesTest extends TestCase
@@ -93,6 +97,105 @@ class BookingPaymentBusinessRulesTest extends TestCase
         }
 
         $this->assertDatabaseCount('bookings', 0);
+    }
+
+    public function test_tool_prices_are_bounded_to_supported_booking_amounts(): void
+    {
+        $vendor = User::factory()->vendor()->create();
+        $vendorProfile = $this->createVendorProfile($vendor);
+        $category = Category::create(['name' => 'Drills', 'slug' => 'drills']);
+
+        $this
+            ->withToken($vendor->createToken('test-client')->plainTextToken)
+            ->postJson('/api/v1/tools', [
+                'vendor_id' => $vendorProfile->id,
+                'category_id' => $category->id,
+                'title' => 'Overflow drill',
+                'price_per_day' => Tool::MaxPricePerDay + 1,
+                'deposit_amount' => Tool::MaxDepositAmount + 1,
+                'city' => 'Vilnius',
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['price_per_day', 'deposit_amount']);
+
+        $this->assertDatabaseCount('tools', 0);
+    }
+
+    public function test_booking_rejects_rental_period_longer_than_supported_maximum(): void
+    {
+        $customer = User::factory()->customer()->create();
+        $tool = Tool::factory()->create();
+        $startAt = now()->addDay();
+
+        $this
+            ->withToken($customer->createToken('test-client')->plainTextToken)
+            ->postJson('/api/v1/bookings', [
+                'tool_id' => $tool->id,
+                'start_at' => $startAt->toDateTimeString(),
+                'end_at' => $startAt->copy()->addDays(Booking::MaxRentalDays + 1)->toDateTimeString(),
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('end_at');
+
+        $this->assertDatabaseCount('bookings', 0);
+    }
+
+    public function test_booking_service_rejects_existing_tool_price_that_overflows_schema(): void
+    {
+        $customer = User::factory()->customer()->create();
+        $tool = Tool::factory()->create([
+            'price_per_day' => Booking::MaxMoneyAmount,
+        ]);
+        $startAt = now()->addDay();
+
+        $this
+            ->withToken($customer->createToken('test-client')->plainTextToken)
+            ->postJson('/api/v1/bookings', [
+                'tool_id' => $tool->id,
+                'start_at' => $startAt->toDateTimeString(),
+                'end_at' => $startAt->copy()->addDays(2)->toDateTimeString(),
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('tool_id');
+
+        $this->assertDatabaseCount('bookings', 0);
+    }
+
+    #[DataProvider('ineligibleVendorAccountProvider')]
+    public function test_customer_cannot_view_or_book_tool_from_ineligible_vendor_account(array $attributes): void
+    {
+        $vendor = User::factory()->create([
+            'role' => 'vendor',
+            'status' => 'active',
+            'email_verified_at' => now(),
+            ...$attributes,
+        ]);
+        $vendorProfile = $this->createVendorProfile($vendor);
+        $category = Category::create(['name' => 'Drills', 'slug' => 'drills']);
+        $tool = $this->createTool($vendorProfile, $category);
+        $customer = User::factory()->customer()->create();
+        $token = $customer->createToken('test-client')->plainTextToken;
+
+        $this
+            ->withToken($token)
+            ->getJson('/api/v1/tools')
+            ->assertOk()
+            ->assertJsonPath('data', []);
+
+        $this
+            ->withToken($token)
+            ->getJson("/api/v1/tools/{$tool->id}")
+            ->assertForbidden();
+
+        $this
+            ->withToken($token)
+            ->postJson('/api/v1/bookings', [
+                'tool_id' => $tool->id,
+                'start_at' => now()->addDay()->toDateTimeString(),
+                'end_at' => now()->addDays(2)->toDateTimeString(),
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('tool_id');
     }
 
     public function test_booking_rejects_overlapping_active_reservations(): void
@@ -388,6 +491,92 @@ class BookingPaymentBusinessRulesTest extends TestCase
         $this->assertSame('refunded', $payment->refresh()->status);
     }
 
+    public function test_stripe_booking_cancellation_only_marks_confirmed_refund_as_refunded(): void
+    {
+        $vendor = User::factory()->create(['role' => 'vendor']);
+        $vendorProfile = $this->createVendorProfile($vendor);
+        $booking = $this->createBooking(User::factory()->create(['role' => 'customer']), vendorProfile: $vendorProfile, attributes: [
+            'status' => 'paid',
+        ]);
+        $payment = $this->createPayment($booking, [
+            'provider' => 'stripe',
+            'provider_payment_id' => 'pi_confirmed_refund',
+            'status' => 'paid',
+        ]);
+        $stripe = Mockery::mock(StripePaymentService::class);
+
+        $stripe
+            ->shouldReceive('createRefund')
+            ->once()
+            ->withArgs(fn (Payment $candidate): bool => $candidate->is($payment))
+            ->andReturn(new PaymentRefundResult('refunded', 're_confirmed'));
+        $this->app->instance(StripePaymentService::class, $stripe);
+
+        $this
+            ->withToken($vendor->createToken('test-client')->plainTextToken)
+            ->patchJson("/api/v1/bookings/{$booking->id}", ['status' => 'cancelled'])
+            ->assertOk()
+            ->assertJsonPath('status', 'cancelled')
+            ->assertJsonPath('payment.status', 'refunded')
+            ->assertJsonPath('payment.provider_refund_id', 're_confirmed');
+    }
+
+    public function test_pending_stripe_refund_is_not_reported_as_refunded(): void
+    {
+        $vendor = User::factory()->create(['role' => 'vendor']);
+        $vendorProfile = $this->createVendorProfile($vendor);
+        $booking = $this->createBooking(User::factory()->create(['role' => 'customer']), vendorProfile: $vendorProfile, attributes: [
+            'status' => 'paid',
+        ]);
+        $payment = $this->createPayment($booking, [
+            'provider' => 'stripe',
+            'provider_payment_id' => 'pi_pending_refund',
+            'status' => 'paid',
+        ]);
+        $stripe = Mockery::mock(StripePaymentService::class);
+
+        $stripe
+            ->shouldReceive('createRefund')
+            ->once()
+            ->andReturn(new PaymentRefundResult('refund_pending', 're_pending'));
+        $this->app->instance(StripePaymentService::class, $stripe);
+
+        $this
+            ->withToken($vendor->createToken('test-client')->plainTextToken)
+            ->patchJson("/api/v1/bookings/{$booking->id}", ['status' => 'cancelled'])
+            ->assertOk()
+            ->assertJsonPath('status', 'cancelled')
+            ->assertJsonPath('payment.status', 'refund_pending')
+            ->assertJsonPath('payment.provider_refund_id', 're_pending');
+    }
+
+    public function test_pending_stripe_refunds_are_synchronized_after_confirmation(): void
+    {
+        $booking = $this->createBooking(User::factory()->create(['role' => 'customer']), attributes: [
+            'status' => 'cancelled',
+        ]);
+        $payment = $this->createPayment($booking, [
+            'provider' => 'stripe',
+            'provider_payment_id' => 'pi_pending_refund',
+            'provider_refund_id' => 're_pending',
+            'status' => 'refund_pending',
+        ]);
+        $stripe = Mockery::mock(StripePaymentService::class);
+
+        $stripe
+            ->shouldReceive('retrieveRefund')
+            ->once()
+            ->with('re_pending')
+            ->andReturn(new PaymentRefundResult('refunded', 're_pending'));
+        $this->app->instance(StripePaymentService::class, $stripe);
+
+        $this->artisan('payments:sync-stripe-refunds')
+            ->expectsOutput('Synchronized 1 Stripe refunds.')
+            ->assertSuccessful();
+
+        $this->assertSame('refunded', $payment->refresh()->status);
+    }
+
     public function test_refunding_payment_cancels_booking_and_prevents_activation(): void
     {
         $admin = User::factory()->create(['role' => 'admin']);
@@ -549,6 +738,16 @@ class BookingPaymentBusinessRulesTest extends TestCase
         $response
             ->assertUnprocessable()
             ->assertJsonValidationErrors('status');
+    }
+
+    public static function ineligibleVendorAccountProvider(): array
+    {
+        return [
+            'blocked account' => [['status' => 'blocked']],
+            'pending account' => [['status' => 'pending']],
+            'non-vendor account' => [['role' => 'customer']],
+            'unverified account' => [['email_verified_at' => null]],
+        ];
     }
 
     private function createVendorProfile(User $user): VendorProfile
