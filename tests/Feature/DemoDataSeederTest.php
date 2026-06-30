@@ -12,7 +12,9 @@ use Modules\Payments\Models\Payment;
 use Modules\ToolImages\Database\Seeders\ToolImagesDatabaseSeeder;
 use Modules\ToolImages\Models\ToolImage;
 use Modules\Tools\Models\Tool;
+use Modules\Users\Database\Seeders\UsersDatabaseSeeder;
 use Modules\Vendors\Models\VendorProfile;
+use RuntimeException;
 use Tests\TestCase;
 
 class DemoDataSeederTest extends TestCase
@@ -78,6 +80,23 @@ class DemoDataSeederTest extends TestCase
         $this->assertSame($booking->total_amount, $payment->amount);
         $this->assertSame($booking->id, $lockCode->booking_id);
         $this->assertTrue($toolImage->is_main);
+    }
+
+    public function test_demo_users_require_explicit_seeding_opt_in(): void
+    {
+        config()->set('app.allow_demo_seeding', false);
+
+        try {
+            $this->seed(UsersDatabaseSeeder::class);
+            $this->fail('Expected demo user seeding to be rejected.');
+        } catch (RuntimeException $exception) {
+            $this->assertSame(
+                'Demo users can only be seeded when ALLOW_DEMO_SEEDING is enabled.',
+                $exception->getMessage(),
+            );
+        }
+
+        $this->assertDatabaseCount('users', 0);
     }
 
     public function test_booking_seeder_reuses_existing_demo_booking_when_status_changes(): void

@@ -5,11 +5,16 @@ namespace Modules\Users\Database\Seeders;
 use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
+use RuntimeException;
 
 class UsersDatabaseSeeder extends Seeder
 {
     public function run(): void
     {
+        if (! config('app.allow_demo_seeding')) {
+            throw new RuntimeException('Demo users can only be seeded when ALLOW_DEMO_SEEDING is enabled.');
+        }
+
         collect([
             [
                 'name' => 'Demo Admin',
