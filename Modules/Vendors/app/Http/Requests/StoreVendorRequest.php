@@ -2,8 +2,10 @@
 
 namespace Modules\Vendors\Http\Requests;
 
+use App\Models\User;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Validator;
 use Modules\Vendors\Models\VendorProfile;
 
 class StoreVendorRequest extends FormRequest
@@ -39,5 +41,25 @@ class StoreVendorRequest extends FormRequest
 
         return (int) $this->input('user_id') === $user->id
             && ! $this->hasAny(['verification_status', 'rating']);
+    }
+
+    /** @return array<int, callable> */
+    public function after(): array
+    {
+        return [
+            function (Validator $validator): void {
+                if ($validator->errors()->has('user_id')) {
+                    return;
+                }
+
+                $user = User::query()->find($this->input('user_id'));
+
+                if ($user?->role === 'vendor') {
+                    return;
+                }
+
+                $validator->errors()->add('user_id', __('The profile must belong to a vendor.'));
+            },
+        ];
     }
 }
