@@ -20,6 +20,34 @@ class LockCodeService
         'revoked' => [],
     ];
 
+    public function create(array $attributes, User $user): LockCode
+    {
+        return DB::transaction(function () use ($attributes, $user): LockCode {
+            $booking = Booking::query()
+                ->lockForUpdate()
+                ->findOrFail($attributes['booking_id']);
+
+            $this->authorizeCreate($booking, $user);
+            $this->ensureBookingIsOpen($booking);
+
+            if (LockCode::query()->where('booking_id', $booking->id)->exists()) {
+                throw ValidationException::withMessages([
+                    'booking_id' => __('The selected booking already has a lock code.'),
+                ]);
+            }
+
+            $lockCode = new LockCode([
+                ...$attributes,
+                'status' => 'generated',
+            ]);
+
+            $this->validateConfiguration($lockCode, $booking, []);
+            $lockCode->save();
+
+            return $lockCode;
+        });
+    }
+
     public function update(LockCode $lockCode, array $attributes, User $user): LockCode
     {
         return DB::transaction(function () use ($lockCode, $attributes, $user): LockCode {
@@ -93,6 +121,37 @@ class LockCodeService
         if (! $ownsTargetBooking) {
             throw new AuthorizationException;
         }
+    }
+
+    private function authorizeCreate(Booking $booking, User $user): void
+    {
+        if (! $user->can('create', LockCode::class)) {
+            throw new AuthorizationException;
+        }
+
+        if ($user->role === 'admin') {
+            return;
+        }
+
+        $ownsBooking = $user->vendorProfile()
+            ->whereKey($booking->vendor_id)
+            ->where('verification_status', 'approved')
+            ->exists();
+
+        if (! $ownsBooking) {
+            throw new AuthorizationException;
+        }
+    }
+
+    private function ensureBookingIsOpen(Booking $booking): void
+    {
+        if (! in_array($booking->status, ['completed', 'cancelled'], true)) {
+            return;
+        }
+
+        throw ValidationException::withMessages([
+            'booking_id' => __('A lock code cannot be created after its booking closes.'),
+        ]);
     }
 
     private function validateLifecycle(LockCode $lockCode, Booking $booking, array $attributes): void

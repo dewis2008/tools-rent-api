@@ -308,6 +308,61 @@ class LockCodeSecurityTest extends TestCase
             ->assertJsonValidationErrors('valid_until');
     }
 
+    public function test_lock_code_creation_starts_in_generated_state(): void
+    {
+        [$vendor, $booking] = $this->createVendorBooking();
+
+        $this
+            ->withToken($vendor->createToken('test-client')->plainTextToken)
+            ->postJson('/api/v1/lock-codes', [
+                'booking_id' => $booking->id,
+                'code' => '123456',
+                'valid_from' => $booking->start_at->toDateTimeString(),
+                'valid_until' => $booking->end_at->toDateTimeString(),
+            ])
+            ->assertCreated()
+            ->assertJsonPath('status', 'generated');
+    }
+
+    public function test_lock_code_creation_rejects_client_supplied_status(): void
+    {
+        [$vendor, $booking] = $this->createVendorBooking();
+
+        $this
+            ->withToken($vendor->createToken('test-client')->plainTextToken)
+            ->postJson('/api/v1/lock-codes', [
+                'booking_id' => $booking->id,
+                'code' => '123456',
+                'valid_from' => $booking->start_at->toDateTimeString(),
+                'valid_until' => $booking->end_at->toDateTimeString(),
+                'status' => 'revoked',
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('status');
+
+        $this->assertDatabaseCount('lock_codes', 0);
+    }
+
+    #[DataProvider('closedBookingStatusProvider')]
+    public function test_lock_code_cannot_be_created_after_booking_closes(string $status): void
+    {
+        [$vendor, $booking] = $this->createVendorBooking();
+        $booking->update(['status' => $status]);
+
+        $this
+            ->withToken($vendor->createToken('test-client')->plainTextToken)
+            ->postJson('/api/v1/lock-codes', [
+                'booking_id' => $booking->id,
+                'code' => '123456',
+                'valid_from' => $booking->start_at->toDateTimeString(),
+                'valid_until' => $booking->end_at->toDateTimeString(),
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('booking_id');
+
+        $this->assertDatabaseCount('lock_codes', 0);
+    }
+
     public function test_partial_lock_code_updates_preserve_valid_interval(): void
     {
         [$vendor, $booking] = $this->createVendorBooking();
@@ -523,6 +578,14 @@ class LockCodeSecurityTest extends TestCase
             'cancelled booking' => ['cancelled', false],
             'completed booking' => ['completed', false],
             'future active booking' => ['active', true],
+        ];
+    }
+
+    public static function closedBookingStatusProvider(): array
+    {
+        return [
+            'completed booking' => ['completed'],
+            'cancelled booking' => ['cancelled'],
         ];
     }
 

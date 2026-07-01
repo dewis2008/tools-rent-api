@@ -26,7 +26,7 @@ class StoreLockCodeRequest extends FormRequest
             'code' => ['required', 'string', 'max:20'],
             'valid_from' => ['required', 'date'],
             'valid_until' => ['required', 'date', 'after:valid_from'],
-            'status' => ['sometimes', 'required', 'in:generated,sent,active,expired,revoked'],
+            'status' => ['prohibited'],
         ];
     }
 
@@ -50,7 +50,7 @@ class StoreLockCodeRequest extends FormRequest
                     $booking,
                     Carbon::parse($this->input('valid_from')),
                     Carbon::parse($this->input('valid_until')),
-                    (string) $this->input('status', 'generated'),
+                    'generated',
                 );
             },
         ];
