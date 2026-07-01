@@ -53,7 +53,24 @@ Restart long-running workers after every deployment so they load the new code:
 php artisan queue:restart
 ```
 
-Production also requires a valid `APP_KEY`, mail configuration for account verification, and `STRIPE_SECRET` when Stripe payments are enabled. Keep `APP_DEBUG=false` outside local development.
+Production also requires a valid `APP_KEY`, mail configuration for account verification, and `STRIPE_SECRET` plus `STRIPE_WEBHOOK_SECRET` when Stripe payments are enabled. Keep `APP_DEBUG=false` outside local development.
+
+## Stripe payments
+
+Create the local payment with `provider: stripe`, then request its PaymentIntent:
+
+```http
+POST /api/v1/payments/{payment}/stripe-payment-intent
+Authorization: Bearer {customer-token}
+```
+
+The response contains the Stripe `client_secret` needed by Stripe.js or the mobile SDK. Configure Stripe to deliver `payment_intent.succeeded`, `payment_intent.payment_failed`, `payment_intent.canceled`, and refund events to:
+
+```text
+POST /api/v1/stripe/webhooks
+```
+
+Webhook signatures are verified with `STRIPE_WEBHOOK_SECRET`. Successful payments update the booking automatically; successful payments received after reservation expiry are cancelled and queued for refund. Refund webhooks reconcile outcomes even when the original Stripe API response was lost.
 
 Tool images are stored on the private `TOOL_IMAGE_DISK` and served through the authenticated `GET /api/v1/tool-images/{toolImage}/file` endpoint. The default `local` disk needs no public storage link.
 Uploads default to 10 images per tool, 100 images per vendor, and 10 mutations per minute. These limits can be adjusted with `TOOL_IMAGE_MAX_PER_TOOL`, `TOOL_IMAGE_MAX_PER_VENDOR`, and `TOOL_IMAGE_UPLOADS_PER_MINUTE`.

@@ -11,18 +11,22 @@ class StorePaymentRequest extends FormRequest
 {
     public function rules(): array
     {
-        return [
-            'booking_id' => ['required', 'integer', 'exists:bookings,id', 'unique:payments,booking_id'],
-            'customer_id' => ['prohibited'],
-            'provider' => ['sometimes', 'required', 'in:demo,stripe,manual'],
-            'provider_payment_id' => [
+        $providerPaymentIdRules = $this->user()?->role !== 'admin' && $this->input('provider', 'demo') === 'stripe'
+            ? ['prohibited']
+            : [
                 'nullable',
                 'string',
                 'max:255',
                 Rule::unique('payments', 'provider_payment_id')->where(
                     fn ($query) => $query->where('provider', $this->input('provider', 'demo')),
                 ),
-            ],
+            ];
+
+        return [
+            'booking_id' => ['required', 'integer', 'exists:bookings,id', 'unique:payments,booking_id'],
+            'customer_id' => ['prohibited'],
+            'provider' => ['sometimes', 'required', 'in:demo,stripe,manual'],
+            'provider_payment_id' => $providerPaymentIdRules,
             'status' => ['prohibited'],
             'amount' => ['prohibited'],
             'currency' => ['prohibited'],

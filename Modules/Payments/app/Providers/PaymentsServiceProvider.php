@@ -2,7 +2,10 @@
 
 namespace Modules\Payments\Providers;
 
+use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\RateLimiter;
 use Modules\Payments\Console\SyncPendingStripeRefundsCommand;
 use Nwidart\Modules\Support\ModuleServiceProvider;
 
@@ -36,6 +39,16 @@ class PaymentsServiceProvider extends ModuleServiceProvider
         EventServiceProvider::class,
         RouteServiceProvider::class,
     ];
+
+    public function boot(): void
+    {
+        parent::boot();
+
+        RateLimiter::for('stripe-payment-intents', function (Request $request): Limit {
+            return Limit::perMinute((int) config('payments.stripe_payment_intents_per_minute', 10))
+                ->by($request->user()?->getAuthIdentifier() ?? $request->ip());
+        });
+    }
 
     protected function configureSchedules(Schedule $schedule): void
     {
