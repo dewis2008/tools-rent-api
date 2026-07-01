@@ -1164,6 +1164,54 @@ class BookingPaymentBusinessRulesTest extends TestCase
             ->assertJsonValidationErrors('provider_payment_id');
     }
 
+    public function test_paid_provider_payment_reference_cannot_be_replaced(): void
+    {
+        $admin = User::factory()->admin()->create();
+        $booking = $this->createBooking(User::factory()->customer()->create(), attributes: [
+            'status' => 'paid',
+        ]);
+        $payment = $this->createPayment($booking, [
+            'provider' => 'stripe',
+            'provider_payment_id' => 'pi_original',
+            'status' => 'paid',
+            'paid_at' => now(),
+        ]);
+        $paymentIntent = StripePaymentIntent::constructFrom([
+            'id' => 'pi_replacement',
+            'status' => StripePaymentIntent::STATUS_SUCCEEDED,
+            'amount_received' => 2500,
+            'currency' => 'eur',
+            'metadata' => [
+                'booking_id' => (string) $booking->id,
+                'payment_id' => (string) $payment->id,
+                'customer_id' => (string) $booking->customer_id,
+            ],
+        ]);
+        $stripe = new class($paymentIntent) extends StripePaymentService
+        {
+            public function __construct(
+                private StripePaymentIntent $paymentIntent,
+            ) {}
+
+            protected function retrievePaymentIntent(string $paymentIntentId): StripePaymentIntent
+            {
+                return $this->paymentIntent;
+            }
+        };
+        $this->app->instance(StripePaymentService::class, $stripe);
+
+        $this
+            ->withToken($admin->createToken('test-client')->plainTextToken)
+            ->patchJson("/api/v1/payments/{$payment->id}", [
+                'status' => 'paid',
+                'provider_payment_id' => 'pi_replacement',
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('provider_payment_id');
+
+        $this->assertSame('pi_original', $payment->refresh()->provider_payment_id);
+    }
+
     public function test_invalid_payment_status_transition_is_rejected(): void
     {
         $admin = User::factory()->create(['role' => 'admin']);
