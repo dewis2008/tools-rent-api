@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Modules\Bookings\Models\Booking;
 use Modules\Categories\Models\Category;
@@ -88,6 +89,11 @@ class Tool extends Model
     public function images(): HasMany
     {
         return $this->hasMany(ToolImage::class);
+    }
+
+    public function mainImage(): HasOne
+    {
+        return $this->hasOne(ToolImage::class)->where('is_main', true);
     }
 
     public function bookings(): HasMany

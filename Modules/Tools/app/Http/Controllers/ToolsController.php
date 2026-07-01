@@ -38,7 +38,7 @@ class ToolsController extends Controller
 
         $query = Tool::query()
             ->visibleTo($user)
-            ->with(['vendor', 'category'])
+            ->with(['vendor', 'category', 'mainImage'])
             ->when(
                 $user?->role === 'customer',
                 fn (Builder $query) => $query->withExists([
@@ -96,7 +96,7 @@ class ToolsController extends Controller
 
         $tool = Tool::create($request->validated());
 
-        return (new ToolsResource($tool->load(['vendor', 'category'])))
+        return (new ToolsResource($tool->load(['vendor', 'category', 'mainImage'])))
             ->response()
             ->setStatusCode(Response::HTTP_CREATED);
     }
@@ -105,7 +105,7 @@ class ToolsController extends Controller
     {
         $this->authorize('view', $tool);
 
-        return (new ToolsResource($tool->load(['vendor', 'category', 'images'])))->response();
+        return (new ToolsResource($tool->load(['vendor', 'category', 'mainImage', 'images'])))->response();
     }
 
     public function update(UpdateToolRequest $request, Tool $tool): JsonResponse
@@ -134,7 +134,7 @@ class ToolsController extends Controller
             return $tool;
         });
 
-        return (new ToolsResource($tool->load(['vendor', 'category', 'images'])))->response();
+        return (new ToolsResource($tool->load(['vendor', 'category', 'mainImage', 'images'])))->response();
     }
 
     public function destroy(Tool $tool): Response

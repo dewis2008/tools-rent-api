@@ -8,6 +8,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Response;
 use Modules\ToolImages\Http\Requests\StoreToolImageRequest;
 use Modules\ToolImages\Http\Requests\UpdateToolImageRequest;
+use Modules\ToolImages\Http\Resources\ToolImagesResource;
 use Modules\ToolImages\Models\ToolImage;
 use Modules\ToolImages\Services\ToolImageService;
 
@@ -24,7 +25,7 @@ class ToolImagesController extends Controller
             })
             ->orderBy('sort_order');
 
-        return response()->json($query->paginate());
+        return ToolImagesResource::collection($query->paginate())->response();
     }
 
     public function store(StoreToolImageRequest $request, ToolImageService $toolImages): JsonResponse
@@ -33,14 +34,16 @@ class ToolImagesController extends Controller
 
         $toolImage = $toolImages->store($request->validated());
 
-        return response()->json($toolImage->load('tool'), Response::HTTP_CREATED);
+        return (new ToolImagesResource($toolImage->load('tool')))
+            ->response()
+            ->setStatusCode(Response::HTTP_CREATED);
     }
 
     public function show(ToolImage $toolImage): JsonResponse
     {
         $this->authorize('view', $toolImage);
 
-        return response()->json($toolImage->load('tool'));
+        return (new ToolImagesResource($toolImage->load('tool')))->response();
     }
 
     public function update(UpdateToolImageRequest $request, ToolImage $toolImage, ToolImageService $toolImages): JsonResponse
@@ -49,7 +52,7 @@ class ToolImagesController extends Controller
 
         $toolImage = $toolImages->update($toolImage, $request->validated());
 
-        return response()->json($toolImage->refresh()->load('tool'));
+        return (new ToolImagesResource($toolImage->refresh()->load('tool')))->response();
     }
 
     public function destroy(ToolImage $toolImage, ToolImageService $toolImages): Response
