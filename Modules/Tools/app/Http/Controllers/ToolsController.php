@@ -31,7 +31,7 @@ class ToolsController extends Controller
 
         $user = request()->user();
 
-        if ($user->role === 'vendor') {
+        if ($user?->role === 'vendor') {
             $user->loadMissing('vendorProfile');
         }
 
@@ -39,7 +39,7 @@ class ToolsController extends Controller
             ->visibleTo($user)
             ->with(['vendor', 'category'])
             ->when(
-                $user->role === 'customer',
+                $user?->role === 'customer',
                 fn (Builder $query) => $query->withExists([
                     'bookings as address_access' => fn (Builder $query) => $query
                         ->where('customer_id', $user->id)

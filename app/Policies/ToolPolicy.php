@@ -10,18 +10,18 @@ class ToolPolicy
 {
     use HandlesRentalAuthorization;
 
-    public function viewAny(User $user): bool
+    public function viewAny(?User $user): bool
     {
         return true;
     }
 
-    public function view(User $user, Tool $tool): bool
+    public function view(?User $user, Tool $tool): bool
     {
-        if ($tool->status === 'active' && $tool->vendor()->eligibleForRentals()->exists()) {
+        if ($tool->isPubliclyAvailable()) {
             return true;
         }
 
-        if ($user->role !== 'vendor') {
+        if ($user?->role !== 'vendor') {
             return false;
         }
 

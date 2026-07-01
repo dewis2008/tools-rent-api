@@ -6,8 +6,12 @@ use App\Models\User;
 
 trait HandlesRentalAuthorization
 {
-    public function before(User $user, string $ability): ?bool
+    public function before(?User $user, string $ability): ?bool
     {
+        if (! $user) {
+            return null;
+        }
+
         if ($user->status !== 'active') {
             return false;
         }

@@ -100,8 +100,12 @@ class Tool extends Model
         return $this->bookings()->withTrashed()->exists();
     }
 
-    public function scopeVisibleTo(Builder $query, User $user): Builder
+    public function scopeVisibleTo(Builder $query, ?User $user): Builder
     {
+        if (! $user) {
+            return $query->publiclyAvailable();
+        }
+
         if ($user->role === 'admin') {
             return $query;
         }
@@ -127,5 +131,14 @@ class Tool extends Model
         return $query
             ->where('status', 'active')
             ->whereHas('vendor', fn (Builder $query) => $query->eligibleForRentals());
+    }
+
+    public function isPubliclyAvailable(): bool
+    {
+        if ($this->status !== 'active') {
+            return false;
+        }
+
+        return $this->vendor()->eligibleForRentals()->exists();
     }
 }
