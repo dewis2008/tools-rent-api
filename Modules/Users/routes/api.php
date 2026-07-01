@@ -31,6 +31,11 @@ Route::prefix('v1')->group(function () {
 
     Route::middleware(['auth:sanctum', EnsureUserIsActive::class])->group(function () {
         Route::apiResource('users', UsersController::class)
+            ->only('update')
+            ->names('users');
+
+        Route::apiResource('users', UsersController::class)
+            ->except('update')
             ->middleware(EnsureUserIsAdmin::class)
             ->names('users');
     });

@@ -671,6 +671,65 @@ class AuthenticationTest extends TestCase
         $response->assertForbidden();
     }
 
+    public function test_customer_can_update_their_own_profile(): void
+    {
+        $user = User::factory()->customer()->create();
+        $token = $user->createToken('test-client')->plainTextToken;
+
+        $response = $this
+            ->withToken($token)
+            ->patchJson("/api/v1/users/{$user->id}", [
+                'name' => 'Updated Customer',
+                'phone' => '+37060000000',
+            ]);
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('name', 'Updated Customer')
+            ->assertJsonPath('phone', '+37060000000');
+
+        $this->assertDatabaseHas('users', [
+            'id' => $user->id,
+            'name' => 'Updated Customer',
+            'phone' => '+37060000000',
+        ]);
+    }
+
+    public function test_customer_cannot_update_another_users_profile(): void
+    {
+        $customer = User::factory()->customer()->create();
+        $otherUser = User::factory()->create([
+            'name' => 'Original Name',
+        ]);
+
+        $this
+            ->withToken($customer->createToken('test-client')->plainTextToken)
+            ->patchJson("/api/v1/users/{$otherUser->id}", [
+                'name' => 'Unauthorized Update',
+            ])
+            ->assertForbidden();
+
+        $this->assertSame('Original Name', $otherUser->refresh()->name);
+    }
+
+    public function test_customer_cannot_update_their_own_role_or_status(): void
+    {
+        $customer = User::factory()->customer()->create();
+
+        $this
+            ->withToken($customer->createToken('test-client')->plainTextToken)
+            ->patchJson("/api/v1/users/{$customer->id}", [
+                'role' => 'admin',
+                'status' => 'blocked',
+            ])
+            ->assertForbidden();
+
+        $customer->refresh();
+
+        $this->assertSame('customer', $customer->role);
+        $this->assertSame('active', $customer->status);
+    }
+
     public function test_admin_token_can_manage_users(): void
     {
         $admin = User::factory()->create([
