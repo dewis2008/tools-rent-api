@@ -38,14 +38,21 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        VerifyEmail::createUrlUsing(fn (User $user): string => URL::temporarySignedRoute(
-            'api.verification.verify',
-            now()->addMinutes((int) config('auth.verification.expire', 60)),
-            [
-                'id' => $user->getKey(),
-                'hash' => sha1($user->getEmailForVerification()),
-            ],
-        ));
+        VerifyEmail::createUrlUsing(function (User $user): string {
+            $verificationUrl = URL::temporarySignedRoute(
+                'api.verification.verify',
+                now()->addMinutes((int) config('auth.verification.expire', 60)),
+                [
+                    'id' => $user->getKey(),
+                    'hash' => sha1($user->getEmailForVerification()),
+                ],
+            );
+
+            $query = http_build_query(['verification_url' => $verificationUrl]);
+            $resultUrl = rtrim((string) config('services.frontend.email_verification_url'), '/');
+
+            return "{$resultUrl}?{$query}";
+        });
 
         Gate::policy(Booking::class, BookingPolicy::class);
         Gate::policy(Category::class, CategoryPolicy::class);

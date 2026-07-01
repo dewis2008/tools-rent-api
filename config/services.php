@@ -27,6 +27,13 @@ return [
         'webhook_secret' => env('STRIPE_WEBHOOK_SECRET'),
     ],
 
+    'frontend' => [
+        'email_verification_url' => env(
+            'FRONTEND_EMAIL_VERIFICATION_URL',
+            'http://localhost:3000/email-verification',
+        ),
+    ],
+
     'ses' => [
         'key' => env('AWS_ACCESS_KEY_ID'),
         'secret' => env('AWS_SECRET_ACCESS_KEY'),
