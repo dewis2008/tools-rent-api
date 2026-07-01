@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use Illuminate\Auth\Events\Verified;
 use Illuminate\Http\JsonResponse;
+use Modules\Users\Http\Resources\UsersResource;
 use Symfony\Component\HttpFoundation\Response;
 
 class VerifyEmailController extends Controller
@@ -31,7 +32,7 @@ class VerifyEmailController extends Controller
         return response()->json([
             'message' => __('Email address verified.'),
             'requires_vendor_approval' => $user->role === 'vendor' && $user->status !== 'active',
-            'user' => $user->refresh(),
+            'user' => new UsersResource($user->refresh()),
         ]);
     }
 }

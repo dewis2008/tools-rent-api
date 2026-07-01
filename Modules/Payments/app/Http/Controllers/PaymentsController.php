@@ -9,6 +9,7 @@ use Illuminate\Http\Response;
 use Modules\Payments\Http\Requests\IndexPaymentRequest;
 use Modules\Payments\Http\Requests\StorePaymentRequest;
 use Modules\Payments\Http\Requests\UpdatePaymentRequest;
+use Modules\Payments\Http\Resources\PaymentsResource;
 use Modules\Payments\Models\Payment;
 use Modules\Payments\Services\PaymentService;
 
@@ -89,7 +90,9 @@ class PaymentsController extends Controller
             ->orderBy($request->sortColumn(), $request->sortDirection())
             ->orderBy('id', $request->sortDirection());
 
-        return response()->json($query->paginate($request->pageSize())->withQueryString());
+        return PaymentsResource::collection(
+            $query->paginate($request->pageSize())->withQueryString(),
+        )->response();
     }
 
     public function store(StorePaymentRequest $request, PaymentService $payments): JsonResponse
@@ -98,14 +101,16 @@ class PaymentsController extends Controller
 
         $payment = $payments->create($request->validated(), $request->user());
 
-        return response()->json($payment->load(['booking', 'customer']), Response::HTTP_CREATED);
+        return (new PaymentsResource($payment->load(['booking', 'customer'])))
+            ->response()
+            ->setStatusCode(Response::HTTP_CREATED);
     }
 
     public function show(Payment $payment): JsonResponse
     {
         $this->authorize('view', $payment);
 
-        return response()->json($payment->load(['booking', 'customer']));
+        return (new PaymentsResource($payment->load(['booking', 'customer'])))->response();
     }
 
     public function update(UpdatePaymentRequest $request, Payment $payment, PaymentService $payments): JsonResponse
@@ -114,6 +119,8 @@ class PaymentsController extends Controller
 
         $payment = $payments->transition($payment, $request->validated());
 
-        return response()->json($payment->refresh()->load(['booking', 'customer']));
+        return (new PaymentsResource(
+            $payment->refresh()->load(['booking', 'customer']),
+        ))->response();
     }
 }

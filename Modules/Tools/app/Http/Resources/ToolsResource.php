@@ -2,19 +2,31 @@
 
 namespace Modules\Tools\Http\Resources;
 
+use App\Http\Resources\ApiResource;
 use App\Models\User;
 use Illuminate\Http\Request;
-use Illuminate\Http\Resources\Json\JsonResource;
+use Modules\Categories\Http\Resources\CategoriesResource;
 use Modules\ToolImages\Http\Resources\ToolImagesResource;
+use Modules\Vendors\Http\Resources\VendorsResource;
 
-class ToolsResource extends JsonResource
+class ToolsResource extends ApiResource
 {
-    public static $wrap = null;
-
     public function toArray(Request $request): array
     {
         return [
-            ...parent::toArray($request),
+            'id' => $this->id,
+            'vendor_id' => $this->vendor_id,
+            'category_id' => $this->category_id,
+            'title' => $this->title,
+            'description' => $this->description,
+            'price_per_day' => $this->price_per_day,
+            'deposit_amount' => $this->deposit_amount,
+            'city' => $this->city,
+            'status' => $this->status,
+            'created_at' => $this->created_at,
+            'updated_at' => $this->updated_at,
+            'vendor' => new VendorsResource($this->whenLoaded('vendor')),
+            'category' => new CategoriesResource($this->whenLoaded('category')),
             'main_image' => new ToolImagesResource($this->whenLoaded('mainImage')),
             'images' => ToolImagesResource::collection($this->whenLoaded('images')),
             'address' => $this->when(

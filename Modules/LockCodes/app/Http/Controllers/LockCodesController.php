@@ -7,6 +7,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Response;
 use Modules\LockCodes\Http\Requests\StoreLockCodeRequest;
 use Modules\LockCodes\Http\Requests\UpdateLockCodeRequest;
+use Modules\LockCodes\Http\Resources\LockCodesResource;
 use Modules\LockCodes\Models\LockCode;
 use Modules\LockCodes\Services\LockCodeService;
 
@@ -27,7 +28,7 @@ class LockCodesController extends Controller
             $query->whereHas('booking', fn ($query) => $query->where('customer_id', $user->id));
         }
 
-        return response()->json($query->paginate());
+        return LockCodesResource::collection($query->paginate())->response();
     }
 
     public function store(StoreLockCodeRequest $request, LockCodeService $lockCodes): JsonResponse
@@ -36,14 +37,16 @@ class LockCodesController extends Controller
 
         $lockCode = $lockCodes->create($request->validated(), $request->user());
 
-        return response()->json($lockCode->load('booking'), Response::HTTP_CREATED);
+        return (new LockCodesResource($lockCode->load('booking')))
+            ->response()
+            ->setStatusCode(Response::HTTP_CREATED);
     }
 
     public function show(LockCode $lockCode): JsonResponse
     {
         $this->authorize('view', $lockCode);
 
-        return response()->json($lockCode->load('booking'));
+        return (new LockCodesResource($lockCode->load('booking')))->response();
     }
 
     public function update(
@@ -55,7 +58,7 @@ class LockCodesController extends Controller
 
         $lockCode = $lockCodes->update($lockCode, $request->validated(), $request->user());
 
-        return response()->json($lockCode->load('booking'));
+        return (new LockCodesResource($lockCode->load('booking')))->response();
     }
 
     public function destroy(LockCode $lockCode, LockCodeService $lockCodes): Response

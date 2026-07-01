@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\DB;
 use Modules\Users\Http\Requests\IndexUserRequest;
 use Modules\Users\Http\Requests\StoreUserRequest;
 use Modules\Users\Http\Requests\UpdateUserRequest;
+use Modules\Users\Http\Resources\UsersResource;
 
 class UsersController extends Controller
 {
@@ -48,7 +49,9 @@ class UsersController extends Controller
             ->orderBy($request->sortColumn(), $request->sortDirection())
             ->orderBy('id', $request->sortDirection());
 
-        return response()->json($query->paginate($request->pageSize())->withQueryString());
+        return UsersResource::collection(
+            $query->paginate($request->pageSize())->withQueryString(),
+        )->response();
     }
 
     public function store(StoreUserRequest $request): JsonResponse
@@ -59,14 +62,16 @@ class UsersController extends Controller
 
         event(new Registered($user));
 
-        return response()->json($user, Response::HTTP_CREATED);
+        return (new UsersResource($user))
+            ->response()
+            ->setStatusCode(Response::HTTP_CREATED);
     }
 
     public function show(User $user): JsonResponse
     {
         $this->authorize('view', $user);
 
-        return response()->json($user);
+        return (new UsersResource($user))->response();
     }
 
     public function update(UpdateUserRequest $request, User $user): JsonResponse
@@ -108,7 +113,7 @@ class UsersController extends Controller
             $user->sendEmailVerificationNotification();
         }
 
-        return response()->json($user->refresh());
+        return (new UsersResource($user->refresh()))->response();
     }
 
     public function destroy(User $user): Response

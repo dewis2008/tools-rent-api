@@ -2,6 +2,7 @@
 
 namespace Modules\Users\Http\Middleware;
 
+use App\Enums\ApiErrorCode;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -27,6 +28,7 @@ class EnsureUserCanAccessAuthSession
     private function forbiddenResponse(): Response
     {
         return response()->json([
+            'code' => ApiErrorCode::AccountInactive->value,
             'message' => __('Your account is not active.'),
         ], Response::HTTP_FORBIDDEN);
     }
