@@ -49,6 +49,43 @@ class AuthenticationTest extends TestCase
         Notification::assertSentToTimes($user, VerifyEmail::class, 1);
     }
 
+    public function test_email_verification_notification_links_to_frontend_result_page(): void
+    {
+        Notification::fake();
+        config(['services.frontend.email_verification_url' => 'https://tools-rent.example/email-verification']);
+
+        $user = User::factory()->unverified()->create();
+
+        $user->sendEmailVerificationNotification();
+
+        Notification::assertSentTo(
+            $user,
+            VerifyEmail::class,
+            function (VerifyEmail $notification) use ($user): bool {
+                $actionUrl = $notification->toMail($user)->actionUrl;
+
+                $this->assertIsString($actionUrl);
+                $this->assertStringStartsWith(
+                    'https://tools-rent.example/email-verification?',
+                    $actionUrl,
+                );
+
+                parse_str((string) parse_url($actionUrl, PHP_URL_QUERY), $query);
+
+                $this->assertArrayHasKey('verification_url', $query);
+                $this->assertSame(
+                    "/api/v1/auth/email/verify/{$user->id}/".sha1($user->getEmailForVerification()),
+                    parse_url($query['verification_url'], PHP_URL_PATH),
+                );
+                $this->assertTrue(URL::hasValidSignature(
+                    request()->create($query['verification_url']),
+                ));
+
+                return true;
+            },
+        );
+    }
+
     public function test_verifying_email_activates_customer(): void
     {
         $user = User::factory()->unverified()->create([
