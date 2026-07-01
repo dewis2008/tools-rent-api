@@ -32,6 +32,13 @@ class PaymentPolicy
         return false;
     }
 
+    public function createPaymentIntent(User $user, Payment $payment): bool
+    {
+        return $user->role === 'customer'
+            && $payment->customer_id === $user->id
+            && $payment->provider === 'stripe';
+    }
+
     public function delete(User $user, Payment $payment): bool
     {
         return false;

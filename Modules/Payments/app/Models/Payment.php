@@ -13,11 +13,17 @@ class Payment extends Model
 {
     use HasFactory;
 
+    protected $attributes = [
+        'provider_payment_attempt' => 1,
+        'refund_attempts' => 0,
+    ];
+
     protected $fillable = [
         'booking_id',
         'customer_id',
         'provider',
         'provider_payment_id',
+        'provider_payment_attempt',
         'provider_refund_id',
         'refund_attempts',
         'status',
@@ -26,10 +32,15 @@ class Payment extends Model
         'paid_at',
     ];
 
+    protected $hidden = [
+        'provider_payment_attempt',
+    ];
+
     protected function casts(): array
     {
         return [
             'amount' => 'decimal:2',
+            'provider_payment_attempt' => 'integer',
             'refund_attempts' => 'integer',
             'paid_at' => 'datetime',
         ];
