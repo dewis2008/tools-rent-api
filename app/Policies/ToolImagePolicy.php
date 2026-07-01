@@ -15,10 +15,14 @@ class ToolImagePolicy
         return true;
     }
 
-    public function view(User $user, ToolImage $toolImage): bool
+    public function view(?User $user, ToolImage $toolImage): bool
     {
         if (! $toolImage->tool) {
             return false;
+        }
+
+        if (! $user) {
+            return $toolImage->tool->isPubliclyAvailable();
         }
 
         return $user->can('view', $toolImage->tool);
