@@ -2,7 +2,10 @@
 
 namespace Modules\ToolImages\Providers;
 
+use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\RateLimiter;
 use Modules\ToolImages\Console\DeletePendingToolImageFilesCommand;
 use Nwidart\Modules\Support\ModuleServiceProvider;
 
@@ -36,6 +39,16 @@ class ToolImagesServiceProvider extends ModuleServiceProvider
         EventServiceProvider::class,
         RouteServiceProvider::class,
     ];
+
+    public function boot(): void
+    {
+        parent::boot();
+
+        RateLimiter::for('tool-image-uploads', function (Request $request): Limit {
+            return Limit::perMinute((int) config('toolimages.uploads_per_minute', 10))
+                ->by($request->user()?->getAuthIdentifier() ?? $request->ip());
+        });
+    }
 
     /**
      * Define module schedules.

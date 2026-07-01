@@ -5,8 +5,10 @@ namespace Modules\ToolImages\Services;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\ValidationException;
 use Modules\ToolImages\Models\PendingToolImageFileDeletion;
 use Modules\ToolImages\Models\ToolImage;
 use Modules\Tools\Models\Tool;
@@ -27,10 +29,14 @@ class ToolImageService
         try {
             return $this->withinTransaction(function () use ($attributes, $path): ToolImage {
                 $this->deleteFileAfterRollback($path);
+                $toolId = (int) $attributes['tool_id'];
+                $lockedTools = $this->lockVendorToolsFor([$toolId]);
+                $targetTool = $lockedTools->firstWhere('id', $toolId);
+
+                $this->ensureImageQuotaAvailable($targetTool, $lockedTools, 'image');
 
                 if ($attributes['is_main'] ?? false) {
-                    $this->lockTool((int) $attributes['tool_id']);
-                    $this->clearMainImage((int) $attributes['tool_id']);
+                    $this->clearMainImage($toolId);
                 }
 
                 return ToolImage::create([
@@ -65,6 +71,29 @@ class ToolImageService
 
         try {
             $toolImage = $this->withinTransaction(function () use ($toolImage, $attributes, $toolId, $newPath, $oldPath, $shouldBeMain): ToolImage {
+                $sourceToolId = (int) $toolImage->tool_id;
+                $lockedTools = $this->lockVendorToolsFor([$sourceToolId, $toolId]);
+                $toolImage = ToolImage::query()->lockForUpdate()->findOrFail($toolImage->id);
+
+                if ((int) $toolImage->tool_id !== $sourceToolId) {
+                    throw ValidationException::withMessages([
+                        'tool_id' => __('The tool image changed while the request was being processed. Please try again.'),
+                    ]);
+                }
+
+                if ($sourceToolId !== $toolId) {
+                    $targetTool = $lockedTools->firstWhere('id', $toolId);
+                    $sourceTool = $lockedTools->firstWhere('id', $sourceToolId);
+                    $quotaField = array_key_exists('tool_id', $attributes) ? 'tool_id' : 'image';
+
+                    $this->ensureImageQuotaAvailable(
+                        $targetTool,
+                        $lockedTools,
+                        $quotaField,
+                        $sourceTool->vendor_id === $targetTool->vendor_id,
+                    );
+                }
+
                 if ($newPath) {
                     $this->deleteFileAfterRollback($newPath);
                     $this->queueFileDeletion($oldPath);
@@ -72,7 +101,6 @@ class ToolImageService
                 }
 
                 if ($shouldBeMain) {
-                    $this->lockTool($toolId);
                     $this->clearMainImage($toolId, $toolImage->id);
                 }
 
@@ -166,9 +194,87 @@ class ToolImageService
             ->update(['is_main' => false]);
     }
 
-    private function lockTool(int $toolId): void
+    /**
+     * @param  array<int, int>  $toolIds
+     * @return Collection<int, Tool>
+     */
+    private function lockVendorToolsFor(array $toolIds): Collection
     {
-        Tool::query()->lockForUpdate()->findOrFail($toolId);
+        $requestedTools = Tool::query()
+            ->whereKey($toolIds)
+            ->get(['id', 'vendor_id']);
+
+        if ($requestedTools->count() !== count(array_unique($toolIds))) {
+            collect($toolIds)
+                ->unique()
+                ->each(fn (int $toolId) => Tool::query()->findOrFail($toolId));
+        }
+
+        $lockedTools = Tool::query()
+            ->whereIn('vendor_id', $requestedTools->pluck('vendor_id')->unique())
+            ->orderBy('vendor_id')
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->get(['id', 'vendor_id']);
+
+        $requestedTools->each(function (Tool $requestedTool) use ($lockedTools): void {
+            $lockedTool = $lockedTools->firstWhere('id', $requestedTool->id);
+
+            if ($lockedTool?->vendor_id !== $requestedTool->vendor_id) {
+                throw ValidationException::withMessages([
+                    'tool_id' => __('The selected tool changed while the request was being processed. Please try again.'),
+                ]);
+            }
+        });
+
+        return $lockedTools;
+    }
+
+    /**
+     * @param  Collection<int, Tool>  $lockedTools
+     */
+    private function ensureImageQuotaAvailable(
+        Tool $targetTool,
+        Collection $lockedTools,
+        string $errorField,
+        bool $sameVendorMove = false,
+    ): void {
+        $maxImagesPerTool = (int) config('toolimages.max_per_tool', 10);
+        $toolImageCount = ToolImage::query()
+            ->where('tool_id', $targetTool->id)
+            ->lockForUpdate()
+            ->pluck('id')
+            ->count();
+
+        if ($toolImageCount >= $maxImagesPerTool) {
+            throw ValidationException::withMessages([
+                $errorField => __('The selected tool may have at most :count images.', [
+                    'count' => $maxImagesPerTool,
+                ]),
+            ]);
+        }
+
+        if ($sameVendorMove) {
+            return;
+        }
+
+        $vendorToolIds = $lockedTools
+            ->where('vendor_id', $targetTool->vendor_id)
+            ->pluck('id');
+        $vendorImageCount = ToolImage::query()
+            ->whereIn('tool_id', $vendorToolIds)
+            ->lockForUpdate()
+            ->pluck('id')
+            ->count();
+        $maxImagesPerVendor = (int) config('toolimages.max_per_vendor', 100);
+
+        if ($vendorImageCount >= $maxImagesPerVendor) {
+            throw ValidationException::withMessages([
+                $errorField => __('A vendor may have at most :count tool images.', [
+                    'count' => $maxImagesPerVendor,
+                ]),
+            ]);
+        }
     }
 
     private function deleteImageFiles(Builder $query): void

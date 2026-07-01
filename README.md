@@ -38,7 +38,7 @@ vendor/bin/pint --test
 Keep a queue worker running under a process monitor such as systemd, Supervisor, or the platform's worker service:
 
 ```bash
-php artisan queue:work --tries=5 --timeout=90
+php artisan queue:work --tries=5 --timeout=60
 ```
 
 Run Laravel's scheduler every minute from cron or the platform scheduler:
@@ -56,6 +56,7 @@ php artisan queue:restart
 Production also requires a valid `APP_KEY`, mail configuration for account verification, and `STRIPE_SECRET` when Stripe payments are enabled. Keep `APP_DEBUG=false` outside local development.
 
 Tool images are stored on the private `TOOL_IMAGE_DISK` and served through the authenticated `GET /api/v1/tool-images/{toolImage}/file` endpoint. The default `local` disk needs no public storage link.
+Uploads default to 10 images per tool, 100 images per vendor, and 10 mutations per minute. These limits can be adjusted with `TOOL_IMAGE_MAX_PER_TOOL`, `TOOL_IMAGE_MAX_PER_VENDOR`, and `TOOL_IMAGE_UPLOADS_PER_MINUTE`.
 
 ## Demo data
 
