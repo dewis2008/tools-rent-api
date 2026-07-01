@@ -3,6 +3,8 @@
 use Illuminate\Support\Facades\Route;
 use Modules\Users\Http\Controllers\AuthController;
 use Modules\Users\Http\Controllers\EmailVerificationNotificationController;
+use Modules\Users\Http\Controllers\NewPasswordsController;
+use Modules\Users\Http\Controllers\PasswordResetLinksController;
 use Modules\Users\Http\Controllers\UsersController;
 use Modules\Users\Http\Controllers\VerifyEmailController;
 use Modules\Users\Http\Middleware\EnsureUserCanAccessAuthSession;
@@ -16,6 +18,12 @@ Route::prefix('v1')->group(function () {
     Route::post('auth/login', [AuthController::class, 'login'])
         ->middleware('throttle:5,1')
         ->name('auth.login');
+    Route::post('auth/forgot-password', [PasswordResetLinksController::class, 'store'])
+        ->middleware('throttle:3,1')
+        ->name('auth.password.email');
+    Route::post('auth/reset-password', [NewPasswordsController::class, 'store'])
+        ->middleware('throttle:5,1')
+        ->name('auth.password.reset');
     Route::get('auth/email/verify/{id}/{hash}', VerifyEmailController::class)
         ->middleware(['signed', 'throttle:6,1'])
         ->name('verification.verify');

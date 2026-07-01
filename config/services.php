@@ -32,6 +32,10 @@ return [
             'FRONTEND_EMAIL_VERIFICATION_URL',
             'http://localhost:3000/email-verification',
         ),
+        'password_reset_url' => env(
+            'FRONTEND_PASSWORD_RESET_URL',
+            'http://localhost:3000/reset-password',
+        ),
     ],
 
     'ses' => [

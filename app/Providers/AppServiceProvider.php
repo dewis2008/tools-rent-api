@@ -11,6 +11,7 @@ use App\Policies\ToolImagePolicy;
 use App\Policies\ToolPolicy;
 use App\Policies\UserPolicy;
 use App\Policies\VendorProfilePolicy;
+use Illuminate\Auth\Notifications\ResetPassword as ResetPasswordNotification;
 use Illuminate\Auth\Notifications\VerifyEmail;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\URL;
@@ -38,6 +39,16 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        ResetPasswordNotification::createUrlUsing(function (User $user, string $token): string {
+            $query = http_build_query([
+                'email' => $user->getEmailForPasswordReset(),
+                'token' => $token,
+            ]);
+            $resetUrl = rtrim((string) config('services.frontend.password_reset_url'), '/');
+
+            return "{$resetUrl}?{$query}";
+        });
+
         VerifyEmail::createUrlUsing(function (User $user): string {
             $verificationUrl = URL::temporarySignedRoute(
                 'api.verification.verify',
