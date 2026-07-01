@@ -22,6 +22,7 @@ class ToolImage extends Model
     ];
 
     protected $hidden = [
+        'image_path',
         'main_tool_id',
     ];
 

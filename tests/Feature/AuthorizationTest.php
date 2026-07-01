@@ -470,6 +470,8 @@ class AuthorizationTest extends TestCase
             ->assertOk()
             ->assertJsonCount(1, 'data')
             ->assertJsonPath('data.0.id', $activeToolImage->id)
+            ->assertJsonPath('data.0.url', route('api.toolImages.file', $activeToolImage))
+            ->assertJsonMissingPath('data.0.image_path')
             ->assertJsonPath('data.0.tool.id', $activeTool->id);
     }
 

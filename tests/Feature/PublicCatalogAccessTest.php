@@ -60,6 +60,46 @@ class PublicCatalogAccessTest extends TestCase
         $this->assertArrayNotHasKey('address', $showResponse->json());
     }
 
+    public function test_tool_catalog_includes_stable_main_image_metadata_without_internal_paths(): void
+    {
+        $tool = Tool::factory()->create(['status' => 'active']);
+        ToolImage::factory()->create([
+            'tool_id' => $tool->id,
+            'image_path' => "tool-images/{$tool->id}/secondary.jpg",
+            'is_main' => false,
+            'sort_order' => 1,
+        ]);
+        $mainImage = ToolImage::factory()->main()->create([
+            'tool_id' => $tool->id,
+            'image_path' => "tool-images/{$tool->id}/main.jpg",
+        ]);
+
+        $response = $this
+            ->getJson('/api/v1/tools')
+            ->assertOk()
+            ->assertJsonPath('data.0.main_image.id', $mainImage->id)
+            ->assertJsonPath('data.0.main_image.tool_id', $tool->id)
+            ->assertJsonPath('data.0.main_image.is_main', true)
+            ->assertJsonPath('data.0.main_image.url', route('api.toolImages.file', $mainImage));
+
+        $response->assertJsonMissing(['image_path' => $mainImage->image_path]);
+    }
+
+    public function test_tool_catalog_returns_null_main_image_when_tool_has_no_main_image(): void
+    {
+        $tool = Tool::factory()->create(['status' => 'active']);
+
+        ToolImage::factory()->create([
+            'tool_id' => $tool->id,
+            'is_main' => false,
+        ]);
+
+        $this
+            ->getJson('/api/v1/tools')
+            ->assertOk()
+            ->assertJsonPath('data.0.main_image', null);
+    }
+
     public function test_guest_cannot_view_an_unpublished_tool(): void
     {
         $tool = Tool::factory()->create(['status' => 'pending']);

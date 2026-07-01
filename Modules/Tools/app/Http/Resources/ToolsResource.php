@@ -5,6 +5,7 @@ namespace Modules\Tools\Http\Resources;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Modules\ToolImages\Http\Resources\ToolImagesResource;
 
 class ToolsResource extends JsonResource
 {
@@ -14,6 +15,8 @@ class ToolsResource extends JsonResource
     {
         return [
             ...parent::toArray($request),
+            'main_image' => new ToolImagesResource($this->whenLoaded('mainImage')),
+            'images' => ToolImagesResource::collection($this->whenLoaded('images')),
             'address' => $this->when(
                 $this->canRevealAddressTo($request->user()),
                 $this->address,

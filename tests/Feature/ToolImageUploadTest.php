@@ -41,13 +41,16 @@ class ToolImageUploadTest extends TestCase
                 'sort_order' => 1,
             ]);
 
+        $toolImage = ToolImage::query()->firstOrFail();
+
         $response
             ->assertCreated()
+            ->assertJsonPath('id', $toolImage->id)
             ->assertJsonPath('tool_id', $tool->id)
             ->assertJsonPath('is_main', true)
-            ->assertJsonPath('sort_order', 1);
-
-        $toolImage = ToolImage::query()->firstOrFail();
+            ->assertJsonPath('sort_order', 1)
+            ->assertJsonPath('url', route('api.toolImages.file', $toolImage))
+            ->assertJsonMissingPath('image_path');
 
         $this->assertStringStartsWith("tool-images/{$tool->id}/", $toolImage->image_path);
         Storage::disk('local')->assertExists($toolImage->image_path);
