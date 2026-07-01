@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
+use Modules\Tools\Http\Requests\IndexToolRequest;
 use Modules\Tools\Http\Requests\StoreToolRequest;
 use Modules\Tools\Http\Requests\UpdateToolRequest;
 use Modules\Tools\Http\Resources\ToolsResource;
@@ -25,11 +26,11 @@ class ToolsController extends Controller
         'address',
     ];
 
-    public function index(): JsonResponse
+    public function index(IndexToolRequest $request): JsonResponse
     {
         $this->authorize('viewAny', Tool::class);
 
-        $user = request()->user();
+        $user = $request->user();
 
         if ($user?->role === 'vendor') {
             $user->loadMissing('vendorProfile');
@@ -46,9 +47,47 @@ class ToolsController extends Controller
                         ->whereIn('status', ['paid', 'active', 'completed']),
                 ]),
             )
-            ->latest();
+            ->when($request->filled('query'), function (Builder $query) use ($request): void {
+                $search = '%'.trim((string) $request->validated('query')).'%';
 
-        return ToolsResource::collection($query->paginate())->response();
+                $query->where(function (Builder $query) use ($search): void {
+                    $query
+                        ->whereLike('title', $search)
+                        ->orWhereLike('description', $search)
+                        ->orWhereHas('category', fn (Builder $query) => $query->whereLike('name', $search))
+                        ->orWhereHas('vendor', fn (Builder $query) => $query->whereLike('business_name', $search));
+                });
+            })
+            ->when(
+                $request->filled('category'),
+                fn (Builder $query) => $query->where('category_id', $request->integer('category')),
+            )
+            ->when(
+                $request->filled('city'),
+                fn (Builder $query) => $query->whereLike('city', trim((string) $request->validated('city'))),
+            )
+            ->when(
+                $request->filled('min_price'),
+                fn (Builder $query) => $query->where('price_per_day', '>=', $request->float('min_price')),
+            )
+            ->when(
+                $request->filled('max_price'),
+                fn (Builder $query) => $query->where('price_per_day', '<=', $request->float('max_price')),
+            )
+            ->when(
+                $request->filled('status'),
+                fn (Builder $query) => $query->where('status', $request->validated('status')),
+            )
+            ->when(
+                $request->filled('vendor_id'),
+                fn (Builder $query) => $query->where('vendor_id', $request->integer('vendor_id')),
+            )
+            ->orderBy($request->sortColumn(), $request->sortDirection())
+            ->orderBy('id', $request->sortDirection());
+
+        return ToolsResource::collection(
+            $query->paginate($request->pageSize())->withQueryString(),
+        )->response();
     }
 
     public function store(StoreToolRequest $request): JsonResponse

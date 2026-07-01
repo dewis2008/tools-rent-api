@@ -6,19 +6,49 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Auth\Events\Registered;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
+use Modules\Users\Http\Requests\IndexUserRequest;
 use Modules\Users\Http\Requests\StoreUserRequest;
 use Modules\Users\Http\Requests\UpdateUserRequest;
 
 class UsersController extends Controller
 {
-    public function index(): JsonResponse
+    public function index(IndexUserRequest $request): JsonResponse
     {
         $this->authorize('viewAny', User::class);
 
-        return response()->json(User::query()->latest()->paginate());
+        $query = User::query()
+            ->when($request->filled('query'), function (Builder $query) use ($request): void {
+                $search = '%'.trim((string) $request->validated('query')).'%';
+
+                $query->where(function (Builder $query) use ($search): void {
+                    $query
+                        ->whereLike('name', $search)
+                        ->orWhereLike('email', $search)
+                        ->orWhereLike('phone', $search);
+                });
+            })
+            ->when(
+                $request->filled('role'),
+                fn (Builder $query) => $query->where('role', $request->validated('role')),
+            )
+            ->when(
+                $request->filled('status'),
+                fn (Builder $query) => $query->where('status', $request->validated('status')),
+            )
+            ->when(
+                $request->has('email_verified'),
+                fn (Builder $query) => $request->boolean('email_verified')
+                    ? $query->whereNotNull('email_verified_at')
+                    : $query->whereNull('email_verified_at'),
+            )
+            ->orderBy($request->sortColumn(), $request->sortDirection())
+            ->orderBy('id', $request->sortDirection());
+
+        return response()->json($query->paginate($request->pageSize())->withQueryString());
     }
 
     public function store(StoreUserRequest $request): JsonResponse

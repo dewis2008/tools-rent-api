@@ -5,9 +5,11 @@ namespace Modules\Vendors\Http\Controllers;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
+use Modules\Vendors\Http\Requests\IndexVendorRequest;
 use Modules\Vendors\Http\Requests\StoreVendorRequest;
 use Modules\Vendors\Http\Requests\UpdateVendorRequest;
 use Modules\Vendors\Models\VendorProfile;
@@ -20,18 +22,56 @@ class VendorsController extends Controller
         'vat_code',
     ];
 
-    public function index(): JsonResponse
+    public function index(IndexVendorRequest $request): JsonResponse
     {
         $this->authorize('viewAny', VendorProfile::class);
 
-        $query = VendorProfile::query()->latest();
-        $user = request()->user();
+        $query = VendorProfile::query();
+        $user = $request->user();
 
         if ($user->role === 'vendor') {
             $query->where('user_id', $user->id);
         }
 
-        return response()->json($query->paginate());
+        $query
+            ->when($request->filled('query'), function (Builder $query) use ($request): void {
+                $search = '%'.trim((string) $request->validated('query')).'%';
+
+                $query->where(function (Builder $query) use ($search): void {
+                    $query
+                        ->whereLike('business_name', $search)
+                        ->orWhereLike('company_code', $search)
+                        ->orWhereLike('vat_code', $search)
+                        ->orWhereHas('user', function (Builder $query) use ($search): void {
+                            $query
+                                ->whereLike('name', $search)
+                                ->orWhereLike('email', $search);
+                        });
+                });
+            })
+            ->when(
+                $request->filled('verification_status'),
+                fn (Builder $query) => $query->where('verification_status', $request->validated('verification_status')),
+            )
+            ->when(
+                $request->filled('user_status'),
+                fn (Builder $query) => $query->whereHas(
+                    'user',
+                    fn (Builder $query) => $query->where('status', $request->validated('user_status')),
+                ),
+            )
+            ->when(
+                $request->filled('min_rating'),
+                fn (Builder $query) => $query->where('rating', '>=', $request->float('min_rating')),
+            )
+            ->when(
+                $request->filled('max_rating'),
+                fn (Builder $query) => $query->where('rating', '<=', $request->float('max_rating')),
+            )
+            ->orderBy($request->sortColumn(), $request->sortDirection())
+            ->orderBy('id', $request->sortDirection());
+
+        return response()->json($query->paginate($request->pageSize())->withQueryString());
     }
 
     public function store(StoreVendorRequest $request): JsonResponse
