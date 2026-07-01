@@ -77,6 +77,11 @@ class AuthController extends Controller
         ]);
     }
 
+    public function me(Request $request): JsonResponse
+    {
+        return response()->json($request->user());
+    }
+
     public function logout(Request $request): Response
     {
         $accessToken = $request->user()->currentAccessToken();
