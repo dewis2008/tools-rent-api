@@ -536,6 +536,71 @@ class AuthenticationTest extends TestCase
         $this->assertAccessTokenExpiresAt($response->json('expires_at'));
     }
 
+    public function test_active_user_can_get_authenticated_user(): void
+    {
+        $user = User::factory()->create();
+
+        $this
+            ->withToken($user->createToken('test-client')->plainTextToken)
+            ->getJson('/api/v1/auth/me')
+            ->assertOk()
+            ->assertJsonPath('id', $user->id)
+            ->assertJsonPath('email', $user->email)
+            ->assertJsonPath('status', 'active');
+    }
+
+    public function test_pending_vendor_can_get_authenticated_user(): void
+    {
+        $vendor = User::factory()->vendor()->create([
+            'status' => 'pending',
+        ]);
+
+        $this
+            ->withToken($vendor->createToken('onboarding-client', ['vendor:onboarding'])->plainTextToken)
+            ->getJson('/api/v1/auth/me')
+            ->assertOk()
+            ->assertJsonPath('id', $vendor->id)
+            ->assertJsonPath('role', 'vendor')
+            ->assertJsonPath('status', 'pending');
+    }
+
+    public function test_pending_customer_cannot_get_authenticated_user(): void
+    {
+        $customer = User::factory()->customer()->create([
+            'status' => 'pending',
+        ]);
+
+        $this
+            ->withToken($customer->createToken('test-client')->plainTextToken)
+            ->getJson('/api/v1/auth/me')
+            ->assertForbidden();
+    }
+
+    public function test_blocked_user_cannot_get_authenticated_user(): void
+    {
+        $user = User::factory()->blocked()->create();
+
+        $this
+            ->withToken($user->createToken('test-client')->plainTextToken)
+            ->getJson('/api/v1/auth/me')
+            ->assertForbidden();
+    }
+
+    public function test_unverified_user_cannot_get_authenticated_user(): void
+    {
+        $user = User::factory()->unverified()->create();
+
+        $this
+            ->withToken($user->createToken('test-client')->plainTextToken)
+            ->getJson('/api/v1/auth/me')
+            ->assertForbidden();
+    }
+
+    public function test_guest_cannot_get_authenticated_user(): void
+    {
+        $this->getJson('/api/v1/auth/me')->assertUnauthorized();
+    }
+
     public function test_user_cannot_login_with_invalid_password(): void
     {
         $user = User::factory()->create([
