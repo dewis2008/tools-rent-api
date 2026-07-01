@@ -76,6 +76,7 @@ class BookingPaymentStateService
 
     public function transitionPayment(Payment $payment, array $validated): Payment
     {
+        $this->ensureProviderReferenceIsImmutable($payment, $validated);
         $this->verifyStripePayment($payment, $validated);
 
         return DB::transaction(function () use ($payment, $validated): Payment {
@@ -85,6 +86,8 @@ class BookingPaymentStateService
                 ->lockForUpdate()
                 ->findOrFail($payment->id);
             $status = $validated['status'];
+
+            $this->ensureProviderReferenceIsImmutable($payment, $validated);
 
             if ($payment->status === $status) {
                 $this->ensureProviderReferenceSupportsPaymentStatus($payment, $status, $validated);
@@ -225,6 +228,25 @@ class BookingPaymentStateService
 
         throw ValidationException::withMessages([
             'provider_payment_id' => __('A Stripe PaymentIntent identifier is required before marking the payment as paid.'),
+        ]);
+    }
+
+    private function ensureProviderReferenceIsImmutable(Payment $payment, array $validated): void
+    {
+        if (! array_key_exists('provider_payment_id', $validated)) {
+            return;
+        }
+
+        if (! in_array($payment->status, ['paid', 'refund_pending', 'refund_failed', 'refunded'], true)) {
+            return;
+        }
+
+        if ($validated['provider_payment_id'] === $payment->provider_payment_id) {
+            return;
+        }
+
+        throw ValidationException::withMessages([
+            'provider_payment_id' => __('The payment provider reference cannot be changed after payment.'),
         ]);
     }
 

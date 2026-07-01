@@ -30,11 +30,11 @@ class LockCodesController extends Controller
         return response()->json($query->paginate());
     }
 
-    public function store(StoreLockCodeRequest $request): JsonResponse
+    public function store(StoreLockCodeRequest $request, LockCodeService $lockCodes): JsonResponse
     {
         $this->authorize('create', LockCode::class);
 
-        $lockCode = LockCode::create($request->validated());
+        $lockCode = $lockCodes->create($request->validated(), $request->user());
 
         return response()->json($lockCode->load('booking'), Response::HTTP_CREATED);
     }
