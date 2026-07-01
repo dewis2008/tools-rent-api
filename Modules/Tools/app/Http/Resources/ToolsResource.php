@@ -32,7 +32,7 @@ class ToolsResource extends JsonResource
         }
 
         if ($user->role === 'vendor') {
-            return $user->vendorProfile()->whereKey($this->resource->vendor_id)->exists();
+            return $user->vendorProfile?->id === $this->resource->vendor_id;
         }
 
         if ($user->role !== 'customer') {

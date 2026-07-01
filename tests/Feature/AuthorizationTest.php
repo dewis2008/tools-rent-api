@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Modules\Bookings\Models\Booking;
 use Modules\Categories\Models\Category;
 use Modules\Payments\Models\Payment;
@@ -405,6 +406,44 @@ class AuthorizationTest extends TestCase
             ->getJson("/api/v1/tools/{$ownPendingTool->id}")
             ->assertOk()
             ->assertJsonPath('address', 'Own private address');
+    }
+
+    public function test_vendor_tool_index_resolves_address_ownership_once(): void
+    {
+        $vendor = User::factory()->vendor()->create();
+        $vendorProfile = $this->createVendorProfile($vendor);
+        $category = Category::factory()->create();
+
+        foreach (range(1, 5) as $index) {
+            Tool::factory()->create([
+                'vendor_id' => $vendorProfile->id,
+                'category_id' => $category->id,
+                'title' => "Tool {$index}",
+                'status' => 'pending',
+            ]);
+        }
+
+        $token = $vendor->createToken('test-client')->plainTextToken;
+
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+
+        $this
+            ->withToken($token)
+            ->getJson('/api/v1/tools')
+            ->assertOk()
+            ->assertJsonCount(5, 'data');
+
+        $vendorOwnershipQueries = collect(DB::getQueryLog())
+            ->pluck('query')
+            ->filter(fn (string $query) => str_contains($query, 'vendor_profiles')
+                && str_contains($query, 'user_id'));
+
+        $this->assertLessThanOrEqual(
+            3,
+            $vendorOwnershipQueries->count(),
+            $vendorOwnershipQueries->implode(PHP_EOL),
+        );
     }
 
     public function test_customer_only_sees_images_for_active_tools(): void

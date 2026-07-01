@@ -30,6 +30,11 @@ class ToolsController extends Controller
         $this->authorize('viewAny', Tool::class);
 
         $user = request()->user();
+
+        if ($user->role === 'vendor') {
+            $user->loadMissing('vendorProfile');
+        }
+
         $query = Tool::query()
             ->visibleTo($user)
             ->with(['vendor', 'category'])
