@@ -53,7 +53,7 @@ Restart long-running workers after every deployment so they load the new code:
 php artisan queue:restart
 ```
 
-Production also requires a valid `APP_KEY`, mail configuration for account verification, `FRONTEND_EMAIL_VERIFICATION_URL` pointing to the frontend result page, and `STRIPE_SECRET` plus `STRIPE_WEBHOOK_SECRET` when Stripe payments are enabled. Keep `APP_DEBUG=false` outside local development.
+Production also requires a valid `APP_KEY`, mail configuration for account verification and password resets, `FRONTEND_EMAIL_VERIFICATION_URL` and `FRONTEND_PASSWORD_RESET_URL` pointing to their frontend pages, and `STRIPE_SECRET` plus `STRIPE_WEBHOOK_SECRET` when Stripe payments are enabled. Keep `APP_DEBUG=false` outside local development.
 
 ## Stripe payments
 
