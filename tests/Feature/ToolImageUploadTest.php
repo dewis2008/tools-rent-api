@@ -562,6 +562,123 @@ class ToolImageUploadTest extends TestCase
         $this->assertDatabaseCount('tool_images', 1);
     }
 
+    public function test_tool_image_upload_respects_per_tool_limit(): void
+    {
+        Storage::fake('local');
+        config()->set('toolimages.max_per_tool', 2);
+        config()->set('toolimages.max_per_vendor', 10);
+
+        $vendor = User::factory()->vendor()->create();
+        $tool = $this->createToolForVendor($vendor);
+
+        foreach (range(1, 2) as $imageNumber) {
+            ToolImage::create([
+                'tool_id' => $tool->id,
+                'image_path' => "tool-images/{$tool->id}/existing-{$imageNumber}.jpg",
+            ]);
+        }
+
+        $this
+            ->withToken($vendor->createToken('test-client')->plainTextToken)
+            ->post('/api/v1/tool-images', [
+                'tool_id' => $tool->id,
+                'image' => UploadedFile::fake()->image('over-limit.jpg', 640, 480),
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('image');
+
+        $this->assertDatabaseCount('tool_images', 2);
+        $this->assertSame([], Storage::disk('local')->allFiles());
+    }
+
+    public function test_tool_image_upload_respects_per_vendor_limit_across_tools(): void
+    {
+        Storage::fake('local');
+        config()->set('toolimages.max_per_tool', 10);
+        config()->set('toolimages.max_per_vendor', 2);
+
+        $vendor = User::factory()->vendor()->create();
+        $firstTool = $this->createToolForVendor($vendor);
+        $secondTool = $this->createToolForVendor($vendor, slug: 'saws');
+
+        foreach ([$firstTool, $secondTool] as $tool) {
+            ToolImage::create([
+                'tool_id' => $tool->id,
+                'image_path' => "tool-images/{$tool->id}/existing.jpg",
+            ]);
+        }
+
+        $this
+            ->withToken($vendor->createToken('test-client')->plainTextToken)
+            ->post('/api/v1/tool-images', [
+                'tool_id' => $secondTool->id,
+                'image' => UploadedFile::fake()->image('over-limit.jpg', 640, 480),
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('image');
+
+        $this->assertDatabaseCount('tool_images', 2);
+        $this->assertSame([], Storage::disk('local')->allFiles());
+    }
+
+    public function test_tool_image_cannot_be_moved_to_a_tool_at_its_limit(): void
+    {
+        Storage::fake('local');
+        config()->set('toolimages.max_per_tool', 1);
+        config()->set('toolimages.max_per_vendor', 10);
+
+        $vendor = User::factory()->vendor()->create();
+        $sourceTool = $this->createToolForVendor($vendor);
+        $targetTool = $this->createToolForVendor($vendor, slug: 'saws');
+        $movingImage = ToolImage::create([
+            'tool_id' => $sourceTool->id,
+            'image_path' => "tool-images/{$sourceTool->id}/moving.jpg",
+        ]);
+        ToolImage::create([
+            'tool_id' => $targetTool->id,
+            'image_path' => "tool-images/{$targetTool->id}/existing.jpg",
+        ]);
+
+        $this
+            ->withToken($vendor->createToken('test-client')->plainTextToken)
+            ->patchJson("/api/v1/tool-images/{$movingImage->id}", [
+                'tool_id' => $targetTool->id,
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('tool_id');
+
+        $this->assertSame($sourceTool->id, $movingImage->refresh()->tool_id);
+        $this->assertDatabaseCount('tool_images', 2);
+    }
+
+    public function test_tool_image_mutations_are_throttled_per_user(): void
+    {
+        $vendor = User::factory()->vendor()->create();
+        $tool = $this->createToolForVendor($vendor);
+        $toolImage = ToolImage::create([
+            'tool_id' => $tool->id,
+            'image_path' => "tool-images/{$tool->id}/existing.jpg",
+        ]);
+        $token = $vendor->createToken('test-client')->plainTextToken;
+
+        foreach (range(1, 9) as $attempt) {
+            $this
+                ->withToken($token)
+                ->postJson('/api/v1/tool-images', ['tool_id' => $tool->id])
+                ->assertUnprocessable();
+        }
+
+        $this
+            ->withToken($token)
+            ->patchJson("/api/v1/tool-images/{$toolImage->id}", ['sort_order' => 1])
+            ->assertOk();
+
+        $this
+            ->withToken($token)
+            ->postJson('/api/v1/tool-images', ['tool_id' => $tool->id])
+            ->assertTooManyRequests();
+    }
+
     private function createToolForVendor(User $vendor, string $slug = 'drills'): Tool
     {
         $vendorProfile = VendorProfile::firstOrCreate(

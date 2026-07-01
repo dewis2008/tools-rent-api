@@ -10,6 +10,7 @@ Route::middleware(['auth:sanctum', EnsureUserIsActive::class])->prefix('v1')->gr
         ->name('toolImages.file');
 
     Route::apiResource('tool-images', ToolImagesController::class)
+        ->middlewareFor(['store', 'update'], 'throttle:tool-image-uploads')
         ->parameters(['tool-images' => 'toolImage'])
         ->names('toolImages');
 });
