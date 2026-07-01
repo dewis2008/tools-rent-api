@@ -9,6 +9,7 @@ use Illuminate\Http\Response;
 use Modules\Bookings\Http\Requests\IndexBookingRequest;
 use Modules\Bookings\Http\Requests\StoreBookingRequest;
 use Modules\Bookings\Http\Requests\UpdateBookingRequest;
+use Modules\Bookings\Http\Resources\BookingsResource;
 use Modules\Bookings\Models\Booking;
 use Modules\Bookings\Services\BookingService;
 
@@ -76,7 +77,9 @@ class BookingsController extends Controller
             ->orderBy($request->sortColumn(), $request->sortDirection())
             ->orderBy('id', $request->sortDirection());
 
-        return response()->json($query->paginate($request->pageSize())->withQueryString());
+        return BookingsResource::collection(
+            $query->paginate($request->pageSize())->withQueryString(),
+        )->response();
     }
 
     public function store(StoreBookingRequest $request, BookingService $bookings): JsonResponse
@@ -85,14 +88,18 @@ class BookingsController extends Controller
 
         $booking = $bookings->create($request->validated(), $request->user());
 
-        return response()->json($booking->load(['tool', 'customer', 'vendor']), Response::HTTP_CREATED);
+        return (new BookingsResource($booking->load(['tool', 'customer', 'vendor'])))
+            ->response()
+            ->setStatusCode(Response::HTTP_CREATED);
     }
 
     public function show(Booking $booking): JsonResponse
     {
         $this->authorize('view', $booking);
 
-        return response()->json($booking->load(['tool', 'customer', 'vendor', 'payment', 'lockCode']));
+        return (new BookingsResource(
+            $booking->load(['tool', 'customer', 'vendor', 'payment', 'lockCode']),
+        ))->response();
     }
 
     public function update(UpdateBookingRequest $request, Booking $booking, BookingService $bookings): JsonResponse
@@ -101,7 +108,9 @@ class BookingsController extends Controller
 
         $booking = $bookings->transition($booking, $request->validated('status'), $request->user());
 
-        return response()->json($booking->refresh()->load(['tool', 'customer', 'vendor', 'payment', 'lockCode']));
+        return (new BookingsResource(
+            $booking->refresh()->load(['tool', 'customer', 'vendor', 'payment', 'lockCode']),
+        ))->response();
     }
 
     public function destroy(Booking $booking, BookingService $bookings): Response

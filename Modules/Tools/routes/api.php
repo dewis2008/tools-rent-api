@@ -1,11 +1,16 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use Modules\Tools\Http\Controllers\ToolAvailabilitiesController;
 use Modules\Tools\Http\Controllers\ToolsController;
 use Modules\Users\Http\Middleware\EnsureUserIsActive;
 use Modules\Users\Http\Middleware\ResolveOptionalSanctumUser;
 
 Route::prefix('v1')->group(function () {
+    Route::get('tools/{tool}/availability', [ToolAvailabilitiesController::class, 'show'])
+        ->middleware(ResolveOptionalSanctumUser::class)
+        ->name('tools.availability');
+
     Route::apiResource('tools', ToolsController::class)
         ->only(['index', 'show'])
         ->middleware(ResolveOptionalSanctumUser::class)

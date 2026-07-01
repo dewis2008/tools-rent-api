@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\DB;
 use Modules\Vendors\Http\Requests\IndexVendorRequest;
 use Modules\Vendors\Http\Requests\StoreVendorRequest;
 use Modules\Vendors\Http\Requests\UpdateVendorRequest;
+use Modules\Vendors\Http\Resources\VendorsResource;
 use Modules\Vendors\Models\VendorProfile;
 
 class VendorsController extends Controller
@@ -71,7 +72,9 @@ class VendorsController extends Controller
             ->orderBy($request->sortColumn(), $request->sortDirection())
             ->orderBy('id', $request->sortDirection());
 
-        return response()->json($query->paginate($request->pageSize())->withQueryString());
+        return VendorsResource::collection(
+            $query->paginate($request->pageSize())->withQueryString(),
+        )->response();
     }
 
     public function store(StoreVendorRequest $request): JsonResponse
@@ -100,14 +103,16 @@ class VendorsController extends Controller
             return $vendor;
         });
 
-        return response()->json($vendor->refresh(), Response::HTTP_CREATED);
+        return (new VendorsResource($vendor->refresh()))
+            ->response()
+            ->setStatusCode(Response::HTTP_CREATED);
     }
 
     public function show(VendorProfile $vendor): JsonResponse
     {
         $this->authorize('view', $vendor);
 
-        return response()->json($vendor);
+        return (new VendorsResource($vendor))->response();
     }
 
     public function update(UpdateVendorRequest $request, VendorProfile $vendor): JsonResponse
@@ -171,7 +176,7 @@ class VendorsController extends Controller
             return $vendor;
         });
 
-        return response()->json($vendor);
+        return (new VendorsResource($vendor))->response();
     }
 
     public function destroy(VendorProfile $vendor): Response

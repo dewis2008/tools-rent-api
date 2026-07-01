@@ -8,6 +8,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Response;
 use Modules\Categories\Http\Requests\StoreCategoryRequest;
 use Modules\Categories\Http\Requests\UpdateCategoryRequest;
+use Modules\Categories\Http\Resources\CategoriesResource;
 use Modules\Categories\Models\Category;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 
@@ -17,7 +18,7 @@ class CategoriesController extends Controller
     {
         $this->authorize('viewAny', Category::class);
 
-        return response()->json(Category::query()->latest()->paginate());
+        return CategoriesResource::collection(Category::query()->latest()->paginate())->response();
     }
 
     public function store(StoreCategoryRequest $request): JsonResponse
@@ -26,14 +27,16 @@ class CategoriesController extends Controller
 
         $category = Category::create($request->validated());
 
-        return response()->json($category, Response::HTTP_CREATED);
+        return (new CategoriesResource($category))
+            ->response()
+            ->setStatusCode(Response::HTTP_CREATED);
     }
 
     public function show(Category $category): JsonResponse
     {
         $this->authorize('view', $category);
 
-        return response()->json($category);
+        return (new CategoriesResource($category))->response();
     }
 
     public function update(UpdateCategoryRequest $request, Category $category): JsonResponse
@@ -42,7 +45,7 @@ class CategoriesController extends Controller
 
         $category->update($request->validated());
 
-        return response()->json($category->refresh());
+        return (new CategoriesResource($category->refresh()))->response();
     }
 
     public function destroy(Category $category): Response

@@ -2,18 +2,22 @@
 
 namespace Modules\ToolImages\Http\Resources;
 
+use App\Http\Resources\ApiResource;
 use Illuminate\Http\Request;
-use Illuminate\Http\Resources\Json\JsonResource;
+use Modules\Tools\Http\Resources\ToolsResource;
 
-class ToolImagesResource extends JsonResource
+class ToolImagesResource extends ApiResource
 {
-    public static $wrap = null;
-
     public function toArray(Request $request): array
     {
         return [
-            ...parent::toArray($request),
+            'id' => $this->id,
+            'tool_id' => $this->tool_id,
+            'is_main' => $this->is_main,
+            'sort_order' => $this->sort_order,
+            'created_at' => $this->created_at,
             'url' => route('api.toolImages.file', ['toolImage' => $this->resource]),
+            'tool' => new ToolsResource($this->whenLoaded('tool')),
         ];
     }
 }

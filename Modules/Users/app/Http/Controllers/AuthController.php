@@ -14,6 +14,7 @@ use Illuminate\Validation\ValidationException;
 use Laravel\Sanctum\NewAccessToken;
 use Modules\Users\Http\Requests\LoginRequest;
 use Modules\Users\Http\Requests\RegisterRequest;
+use Modules\Users\Http\Resources\UsersResource;
 
 class AuthController extends Controller
 {
@@ -33,7 +34,7 @@ class AuthController extends Controller
             'message' => __('Please verify your email address.'),
             'requires_email_verification' => true,
             'requires_vendor_approval' => $user->role === 'vendor',
-            'user' => $user,
+            'user' => new UsersResource($user),
         ], Response::HTTP_CREATED);
     }
 
@@ -73,13 +74,13 @@ class AuthController extends Controller
             'expires_at' => $accessToken->accessToken->expires_at->toISOString(),
             'token_type' => 'Bearer',
             'requires_vendor_approval' => $user->status === 'pending',
-            'user' => $user,
+            'user' => new UsersResource($user),
         ]);
     }
 
     public function me(Request $request): JsonResponse
     {
-        return response()->json($request->user());
+        return (new UsersResource($request->user()))->response();
     }
 
     public function logout(Request $request): Response

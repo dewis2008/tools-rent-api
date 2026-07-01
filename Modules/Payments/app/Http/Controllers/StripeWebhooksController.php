@@ -2,6 +2,7 @@
 
 namespace Modules\Payments\Http\Controllers;
 
+use App\Enums\ApiErrorCode;
 use Illuminate\Http\Request;
 use Modules\Payments\Services\StripeWebhookService;
 use Stripe\Exception\SignatureVerificationException;
@@ -17,6 +18,7 @@ class StripeWebhooksController
 
         if ($webhookSecret === '') {
             return response()->json([
+                'code' => ApiErrorCode::ServiceUnavailable->value,
                 'message' => __('Stripe webhooks are not configured.'),
             ], Response::HTTP_SERVICE_UNAVAILABLE);
         }
@@ -29,6 +31,7 @@ class StripeWebhooksController
             );
         } catch (SignatureVerificationException|UnexpectedValueException) {
             return response()->json([
+                'code' => ApiErrorCode::InvalidWebhookSignature->value,
                 'message' => __('The Stripe webhook signature is invalid.'),
             ], Response::HTTP_BAD_REQUEST);
         }

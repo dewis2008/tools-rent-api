@@ -13,10 +13,9 @@ use Modules\Tools\Models\Tool;
 
 class BookingService
 {
-    private const BlockingStatuses = ['pending', 'paid', 'active'];
-
     public function __construct(
         private BookingPaymentStateService $bookingPaymentStates,
+        private BookingAvailabilityService $bookingAvailability,
     ) {}
 
     public function create(array $validated, User $user): Booking
@@ -155,31 +154,13 @@ class BookingService
 
     private function ensureToolIsAvailable(int $toolId, Carbon $startAt, Carbon $endAt): void
     {
-        $hasOverlap = Booking::query()
-            ->where('tool_id', $toolId)
-            ->where(function ($query): void {
-                $query
-                    ->whereIn('status', array_diff(self::BlockingStatuses, ['pending']))
-                    ->orWhere(function ($query): void {
-                        $query
-                            ->where('status', 'pending')
-                            ->where(function ($query): void {
-                                $query
-                                    ->whereNull('expires_at')
-                                    ->orWhere('expires_at', '>', now());
-                            });
-                    });
-            })
-            ->where('start_at', '<', $endAt)
-            ->where('end_at', '>', $startAt)
-            ->lockForUpdate()
-            ->exists();
-
-        if ($hasOverlap) {
-            throw ValidationException::withMessages([
-                'start_at' => __('The selected tool is not available for this period.'),
-            ]);
+        if (! $this->bookingAvailability->hasConflict($toolId, $startAt, $endAt, lockForUpdate: true)) {
+            return;
         }
+
+        throw ValidationException::withMessages([
+            'start_at' => __('The selected tool is not available for this period.'),
+        ]);
     }
 
     private function ensureCustomerMayBook(int $customerId): void

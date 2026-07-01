@@ -4,6 +4,7 @@ namespace Modules\Payments\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
+use Modules\Payments\Http\Resources\PaymentsResource;
 use Modules\Payments\Models\Payment;
 use Modules\Payments\Services\StripePaymentIntentService;
 
@@ -17,7 +18,7 @@ class StripePaymentIntentsController extends Controller
 
         return response()
             ->json([
-                'payment' => $result->payment->load(['booking', 'customer']),
+                'payment' => new PaymentsResource($result->payment->load(['booking', 'customer'])),
                 'client_secret' => $result->clientSecret,
             ])
             ->header('Cache-Control', 'no-store, private')
