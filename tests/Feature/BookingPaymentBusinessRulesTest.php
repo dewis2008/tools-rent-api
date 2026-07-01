@@ -466,6 +466,25 @@ class BookingPaymentBusinessRulesTest extends TestCase
         $this->assertDatabaseHas('payments', ['id' => $payment->id]);
     }
 
+    public function test_payment_audit_records_cannot_be_deleted_by_admins(): void
+    {
+        $admin = User::factory()->admin()->create();
+        $booking = $this->createBooking(User::factory()->customer()->create(), attributes: [
+            'status' => 'paid',
+        ]);
+        $payment = $this->createPayment($booking, ['status' => 'paid']);
+
+        $this
+            ->withToken($admin->createToken('test-client')->plainTextToken)
+            ->deleteJson("/api/v1/payments/{$payment->id}")
+            ->assertMethodNotAllowed();
+
+        $this->assertDatabaseHas('payments', [
+            'id' => $payment->id,
+            'status' => 'paid',
+        ]);
+    }
+
     public function test_tool_and_vendor_with_booking_history_cannot_be_deleted(): void
     {
         $customer = User::factory()->create(['role' => 'customer']);

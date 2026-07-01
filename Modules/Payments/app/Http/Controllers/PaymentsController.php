@@ -54,13 +54,4 @@ class PaymentsController extends Controller
 
         return response()->json($payment->refresh()->load(['booking', 'customer']));
     }
-
-    public function destroy(Payment $payment): Response
-    {
-        $this->authorize('delete', $payment);
-
-        $payment->delete();
-
-        return response()->noContent();
-    }
 }
